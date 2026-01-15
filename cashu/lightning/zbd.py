@@ -120,7 +120,7 @@ class ZBDWallet(LightningBackend):
             StatusResponse with balance in satoshis and any error message.
         """
         try:
-            r = await self.client.get(f"{self.endpoint}/v1/wallet")
+            r = await self.client.get(f"{self.endpoint}/v0/wallet")
             r.raise_for_status()
             data = r.json()
 
