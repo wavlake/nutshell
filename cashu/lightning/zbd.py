@@ -183,17 +183,25 @@ class ZBDWallet(LightningBackend):
 
         Formula: msats = (cents / 100 / btc_usd_rate) * 100_000_000 * 1000
 
+        Note: ZBD API requires amounts divisible by 1000 (whole sats), so we
+        round up to the nearest sat to ensure the user pays at least the
+        requested amount.
+
         Args:
             cents: Amount in USD cents (e.g., 100 for $1.00)
             btc_usd_rate: BTC/USD exchange rate (e.g., 100000.00)
 
         Returns:
-            Amount in millisatoshis
+            Amount in millisatoshis (rounded up to nearest 1000)
         """
+        import math
+
         dollars = cents / 100
         btc = dollars / btc_usd_rate
         sats = btc * 100_000_000
-        msats = int(sats * 1000)
+        # Round up to nearest whole sat, then convert to msats
+        sats_rounded = math.ceil(sats)
+        msats = sats_rounded * 1000
         return msats
 
     async def create_invoice(
@@ -251,7 +259,7 @@ class ZBDWallet(LightningBackend):
             payload["callbackUrl"] = self.callback_url
 
         try:
-            r = await self.client.post(f"{self.endpoint}/v1/charges", json=payload)
+            r = await self.client.post(f"{self.endpoint}/v0/charges", json=payload)
             r.raise_for_status()
             data = r.json().get("data", {})
 
@@ -281,7 +289,7 @@ class ZBDWallet(LightningBackend):
             PaymentStatus with result (PENDING, SETTLED, FAILED, or UNKNOWN).
         """
         try:
-            r = await self.client.get(f"{self.endpoint}/v1/charges/{checking_id}")
+            r = await self.client.get(f"{self.endpoint}/v0/charges/{checking_id}")
             r.raise_for_status()
             data = r.json().get("data", {})
 
