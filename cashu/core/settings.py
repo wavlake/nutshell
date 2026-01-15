@@ -289,6 +289,30 @@ class CoreLightningRestFundingSource(MintSettings):
     mint_corelightning_rest_cert: Optional[str] = Field(default=None)
 
 
+class ZBDFundingSource(MintSettings):
+    """ZBD Lightning backend settings.
+
+    Used when MINT_BACKEND_BOLT11_SAT=ZBDWallet for direct ZBD integration.
+    """
+
+    mint_zbd_api_key: Optional[str] = Field(
+        default=None,
+        description="ZBD API key for Lightning operations.",
+    )
+    mint_zbd_endpoint: str = Field(
+        default="https://api.zebedee.io",
+        description="ZBD API endpoint URL.",
+    )
+    mint_zbd_callback_url: Optional[str] = Field(
+        default=None,
+        description="Webhook callback URL for payment notifications.",
+    )
+    mint_redis_url: Optional[str] = Field(
+        default=None,
+        description="Redis URL for webhook pub/sub (e.g., redis://localhost:6379).",
+    )
+
+
 class AuthSettings(MintSettings):
     mint_auth_database: str = Field(default="data/mint")
     mint_require_auth: bool = Field(default=False)
@@ -323,6 +347,7 @@ class Settings(
     LndRestFundingSource,
     CoreLightningRestFundingSource,
     CLNRestFundingSource,
+    ZBDFundingSource,
     FakeWalletSettings,
     MintLimits,
     MintBackends,
