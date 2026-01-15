@@ -5,9 +5,14 @@ with the ZBD API for invoice creation and status checking. It is designed for
 melt-disabled configurations (consumption-only tokens) and supports webhook-based
 payment notifications via Redis pub/sub.
 
+Supports both sat and USD denominations. USD amounts are converted to msats using
+ZBD's exchange rate API with caching and circuit breaker fallback.
+
 https://docs.zbdpay.com/docs
 """
 
+import time
+from dataclasses import dataclass
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -34,6 +39,26 @@ INVOICE_STATUS_MAP = {
     "error": PaymentResult.FAILED,
 }
 
+# Exchange rate caching configuration
+RATE_CACHE_TTL_SECONDS = 300  # 5 minutes
+RATE_CIRCUIT_BREAKER_TTL_SECONDS = 900  # 15 minutes (fallback)
+
+
+@dataclass
+class CachedRate:
+    """Cached exchange rate with timestamp."""
+
+    rate: float  # BTC/USD rate (e.g., 100000.00)
+    timestamp: float  # Unix timestamp when rate was fetched
+
+    def is_fresh(self) -> bool:
+        """Check if rate is within normal cache TTL (5 minutes)."""
+        return time.time() - self.timestamp < RATE_CACHE_TTL_SECONDS
+
+    def is_usable(self) -> bool:
+        """Check if rate is within circuit breaker TTL (15 minutes)."""
+        return time.time() - self.timestamp < RATE_CIRCUIT_BREAKER_TTL_SECONDS
+
 
 class ZBDWallet(LightningBackend):
     """ZBD Lightning backend for Nutshell.
@@ -42,30 +67,36 @@ class ZBDWallet(LightningBackend):
     payment notification. Designed for melt-disabled configurations
     where tokens are consumption-only (no redemption for Lightning).
 
+    Supports both sat and USD denominations. USD amounts are converted
+    to msats using the BTC/USD exchange rate from ZBD's API.
+
     API Reference: https://docs.zbdpay.com/docs
 
     Attributes:
-        supported_units: Set of supported currency units (sat only).
+        supported_units: Set of supported currency units (sat and usd).
         supports_mpp: Multi-path payment support (disabled).
         supports_incoming_payment_stream: Webhook support via Redis (enabled).
         supports_description: Invoice description support (enabled).
         unit: The currency unit for this backend instance.
     """
 
-    supported_units = {Unit.sat}
+    supported_units = {Unit.sat, Unit.usd}
     supports_mpp = False
     supports_incoming_payment_stream = True
     supports_description = True
+
+    # Class-level exchange rate cache (shared across instances)
+    _rate_cache: Optional[CachedRate] = None
 
     def __init__(self, unit: Unit, **kwargs):
         """Initialize ZBD wallet backend.
 
         Args:
-            unit: Currency unit (must be sat).
+            unit: Currency unit (sat or usd).
             **kwargs: Additional arguments (unused).
 
         Raises:
-            Unsupported: If unit is not sat.
+            Unsupported: If unit is not sat or usd.
             ValueError: If MINT_ZBD_API_KEY is not configured.
         """
         self.assert_unit_supported(unit)
@@ -107,6 +138,64 @@ class ZBDWallet(LightningBackend):
                 balance=Amount(Unit.sat, 0),
             )
 
+    async def get_exchange_rate(self) -> float:
+        """Fetch BTC/USD exchange rate from ZBD API with caching.
+
+        Implements a caching strategy with circuit breaker:
+        - Fresh cache (< 5 min): Use cached rate
+        - Stale cache (5-15 min): Try to refresh, fall back to cached on error
+        - Expired cache (> 15 min): Must fetch fresh rate
+
+        Returns:
+            BTC/USD exchange rate (e.g., 100000.00 for $100,000/BTC)
+
+        Raises:
+            RuntimeError: If rate cannot be fetched and no valid cached rate exists
+        """
+        # Check if we have a fresh cached rate
+        if ZBDWallet._rate_cache is not None and ZBDWallet._rate_cache.is_fresh():
+            return ZBDWallet._rate_cache.rate
+
+        # Try to fetch fresh rate
+        try:
+            r = await self.client.get(f"{self.endpoint}/v1/btcusd")
+            r.raise_for_status()
+            data = r.json().get("data", {})
+
+            rate = float(data.get("btcUsdPrice", 0))
+            if rate <= 0:
+                raise ValueError("Invalid exchange rate received from ZBD")
+
+            # Update cache with fresh rate
+            ZBDWallet._rate_cache = CachedRate(rate=rate, timestamp=time.time())
+            return rate
+
+        except Exception as e:
+            # Circuit breaker: if we have a stale-but-usable cached rate, use it
+            if ZBDWallet._rate_cache is not None and ZBDWallet._rate_cache.is_usable():
+                return ZBDWallet._rate_cache.rate
+
+            # No valid cached rate available
+            raise RuntimeError(f"Failed to fetch exchange rate from ZBD: {e}")
+
+    def cents_to_msats(self, cents: int, btc_usd_rate: float) -> int:
+        """Convert USD cents to millisatoshis using the given exchange rate.
+
+        Formula: msats = (cents / 100 / btc_usd_rate) * 100_000_000 * 1000
+
+        Args:
+            cents: Amount in USD cents (e.g., 100 for $1.00)
+            btc_usd_rate: BTC/USD exchange rate (e.g., 100000.00)
+
+        Returns:
+            Amount in millisatoshis
+        """
+        dollars = cents / 100
+        btc = dollars / btc_usd_rate
+        sats = btc * 100_000_000
+        msats = int(sats * 1000)
+        return msats
+
     async def create_invoice(
         self,
         amount: Amount,
@@ -117,21 +206,39 @@ class ZBDWallet(LightningBackend):
         """Create a Lightning invoice via ZBD.
 
         Args:
-            amount: Amount for the invoice.
+            amount: Amount for the invoice (sat or usd).
             memo: Optional description text.
             description_hash: Optional description hash (unused by ZBD).
             unhashed_description: Optional unhashed description (unused by ZBD).
 
         Returns:
             InvoiceResponse with checking_id and payment_request bolt11 string.
+
+        Note:
+            For USD amounts, the exchange rate is fetched and locked at quote
+            creation time. The rate used for conversion is cached for up to
+            5 minutes, with a 15-minute circuit breaker fallback.
         """
         self.assert_unit_supported(amount.unit)
 
         # Convert to millisatoshis for ZBD API
-        if amount.unit == Unit.sat:
-            amount_msats = str(amount.amount * 1000)
-        else:
-            amount_msats = str(amount.amount)
+        try:
+            if amount.unit == Unit.sat:
+                amount_msats = str(amount.amount * 1000)
+            elif amount.unit == Unit.usd:
+                # Fetch exchange rate and convert USD cents to msats
+                rate = await self.get_exchange_rate()
+                amount_msats = str(self.cents_to_msats(amount.amount, rate))
+            else:
+                return InvoiceResponse(
+                    ok=False,
+                    error_message=f"Unsupported unit: {amount.unit}",
+                )
+        except RuntimeError as e:
+            return InvoiceResponse(
+                ok=False,
+                error_message=f"Exchange rate error: {e}",
+            )
 
         payload = {
             "amount": amount_msats,

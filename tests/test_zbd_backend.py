@@ -1,13 +1,15 @@
 """Unit tests for ZBD Lightning backend.
 
 Tests cover:
-- Invoice creation with proper ZBD API mapping
+- Invoice creation with proper ZBD API mapping (sat and USD)
 - Invoice status checking with status mapping
 - Melt operations raising Unsupported exceptions
-- Supported units validation
+- Supported units validation (sat and usd)
+- USD exchange rate fetching and caching
 - Webhook stream configuration
 """
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,7 +36,19 @@ class TestZBDWallet:
         """Create a ZBDWallet instance with mocked settings."""
         from cashu.lightning.zbd import ZBDWallet
 
+        # Clear the rate cache between tests
+        ZBDWallet._rate_cache = None
         wallet = ZBDWallet(unit=Unit.sat)
+        return wallet
+
+    @pytest.fixture
+    def zbd_wallet_usd(self, mock_settings):
+        """Create a ZBDWallet instance for USD unit."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        # Clear the rate cache between tests
+        ZBDWallet._rate_cache = None
+        wallet = ZBDWallet(unit=Unit.usd)
         return wallet
 
     def test_init_requires_api_key(self):
@@ -50,9 +64,9 @@ class TestZBDWallet:
                 ZBDWallet(unit=Unit.sat)
 
     def test_supported_units(self, zbd_wallet):
-        """Test that only sat unit is supported."""
+        """Test that sat and usd units are supported."""
         assert Unit.sat in zbd_wallet.supported_units
-        assert Unit.usd not in zbd_wallet.supported_units
+        assert Unit.usd in zbd_wallet.supported_units
         assert Unit.eur not in zbd_wallet.supported_units
         assert Unit.msat not in zbd_wallet.supported_units
 
@@ -60,8 +74,8 @@ class TestZBDWallet:
         """Test that unsupported units raise Unsupported exception."""
         from cashu.lightning.zbd import ZBDWallet
 
-        with pytest.raises(Unsupported, match="Unit usd is not supported"):
-            ZBDWallet(unit=Unit.usd)
+        with pytest.raises(Unsupported, match="Unit eur is not supported"):
+            ZBDWallet(unit=Unit.eur)
 
     def test_supports_incoming_payment_stream(self, zbd_wallet):
         """Test that webhook stream is supported."""
@@ -340,6 +354,294 @@ class TestZBDWallet:
         with pytest.raises(RuntimeError, match="MINT_REDIS_URL"):
             async for _ in wallet.paid_invoices_stream():
                 pass
+
+
+class TestUSDSupport:
+    """Test suite for USD denomination support."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Create mock settings for ZBD backend."""
+        with patch("cashu.lightning.zbd.settings") as mock_settings:
+            mock_settings.mint_zbd_api_key = "test_api_key"
+            mock_settings.mint_zbd_endpoint = "https://api.zebedee.io"
+            mock_settings.mint_zbd_callback_url = "https://example.com/webhook"
+            mock_settings.mint_redis_url = "redis://localhost:6379"
+            yield mock_settings
+
+    @pytest.fixture
+    def zbd_wallet_usd(self, mock_settings):
+        """Create a ZBDWallet instance for USD unit."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        # Clear the rate cache between tests
+        ZBDWallet._rate_cache = None
+        wallet = ZBDWallet(unit=Unit.usd)
+        return wallet
+
+    def test_cents_to_msats_conversion(self, zbd_wallet_usd):
+        """Test USD cents to msats conversion formula."""
+        # At $100,000/BTC:
+        # $1.00 (100 cents) = 0.00001 BTC = 1000 sats = 1,000,000 msats
+        rate = 100000.0
+        result = zbd_wallet_usd.cents_to_msats(100, rate)
+        assert result == 1000000  # 1000 sats in msats
+
+        # $0.01 (1 cent) = 10 sats = 10,000 msats
+        result = zbd_wallet_usd.cents_to_msats(1, rate)
+        assert result == 10000  # 10 sats in msats
+
+        # $10.00 (1000 cents) = 10,000 sats = 10,000,000 msats
+        result = zbd_wallet_usd.cents_to_msats(1000, rate)
+        assert result == 10000000  # 10,000 sats in msats
+
+    def test_cents_to_msats_different_rate(self, zbd_wallet_usd):
+        """Test conversion with different exchange rate."""
+        # At $50,000/BTC:
+        # $1.00 (100 cents) = 0.00002 BTC = 2000 sats = 2,000,000 msats
+        rate = 50000.0
+        result = zbd_wallet_usd.cents_to_msats(100, rate)
+        assert result == 2000000  # 2000 sats in msats
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_success(self, zbd_wallet_usd):
+        """Test successful exchange rate fetch."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": {"btcUsdPrice": "100000.00"}
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = mock_response
+
+            rate = await zbd_wallet_usd.get_exchange_rate()
+
+            assert rate == 100000.0
+            mock_get.assert_called_once()
+            # Verify cache was updated
+            assert ZBDWallet._rate_cache is not None
+            assert ZBDWallet._rate_cache.rate == 100000.0
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_uses_fresh_cache(self, zbd_wallet_usd):
+        """Test that fresh cached rate is returned without API call."""
+        from cashu.lightning.zbd import CachedRate, ZBDWallet
+
+        # Set up fresh cache (just now)
+        ZBDWallet._rate_cache = CachedRate(rate=99000.0, timestamp=time.time())
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            rate = await zbd_wallet_usd.get_exchange_rate()
+
+            assert rate == 99000.0
+            # API should NOT be called when cache is fresh
+            mock_get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_refreshes_stale_cache(self, zbd_wallet_usd):
+        """Test that stale cache triggers API refresh."""
+        from cashu.lightning.zbd import CachedRate, ZBDWallet
+
+        # Set up stale cache (6 minutes ago - past 5 min TTL)
+        ZBDWallet._rate_cache = CachedRate(
+            rate=99000.0, timestamp=time.time() - 360
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": {"btcUsdPrice": "101000.00"}
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = mock_response
+
+            rate = await zbd_wallet_usd.get_exchange_rate()
+
+            assert rate == 101000.0  # New rate from API
+            mock_get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_circuit_breaker_fallback(self, zbd_wallet_usd):
+        """Test circuit breaker uses stale cache on API error."""
+        from cashu.lightning.zbd import CachedRate, ZBDWallet
+
+        # Set up stale but usable cache (10 minutes ago - past 5 min, within 15 min)
+        ZBDWallet._rate_cache = CachedRate(
+            rate=99000.0, timestamp=time.time() - 600
+        )
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.side_effect = Exception("API unavailable")
+
+            rate = await zbd_wallet_usd.get_exchange_rate()
+
+            # Should return cached rate as fallback
+            assert rate == 99000.0
+            mock_get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_fails_without_valid_cache(self, zbd_wallet_usd):
+        """Test that rate fetch fails when no valid cache exists."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        # No cache set
+        ZBDWallet._rate_cache = None
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.side_effect = Exception("API unavailable")
+
+            with pytest.raises(RuntimeError, match="Failed to fetch exchange rate"):
+                await zbd_wallet_usd.get_exchange_rate()
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_fails_with_expired_cache(self, zbd_wallet_usd):
+        """Test that rate fetch fails when cache is expired (>15 min)."""
+        from cashu.lightning.zbd import CachedRate, ZBDWallet
+
+        # Set up expired cache (20 minutes ago - past 15 min circuit breaker)
+        ZBDWallet._rate_cache = CachedRate(
+            rate=99000.0, timestamp=time.time() - 1200
+        )
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.side_effect = Exception("API unavailable")
+
+            with pytest.raises(RuntimeError, match="Failed to fetch exchange rate"):
+                await zbd_wallet_usd.get_exchange_rate()
+
+    @pytest.mark.asyncio
+    async def test_get_exchange_rate_invalid_rate(self, zbd_wallet_usd):
+        """Test that invalid rate (zero or negative) raises error."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        ZBDWallet._rate_cache = None
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": {"btcUsdPrice": "0"}
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = mock_response
+
+            with pytest.raises(RuntimeError, match="Failed to fetch exchange rate"):
+                await zbd_wallet_usd.get_exchange_rate()
+
+    @pytest.mark.asyncio
+    async def test_create_invoice_usd_success(self, zbd_wallet_usd):
+        """Test successful USD invoice creation with exchange rate."""
+        mock_rate_response = MagicMock()
+        mock_rate_response.json.return_value = {
+            "data": {"btcUsdPrice": "100000.00"}
+        }
+        mock_rate_response.raise_for_status = MagicMock()
+
+        mock_invoice_response = MagicMock()
+        mock_invoice_response.json.return_value = {
+            "data": {
+                "id": "charge_usd_123",
+                "invoice": {"request": "lnbc1000u1..."},
+            }
+        }
+        mock_invoice_response.raise_for_status = MagicMock()
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get, patch.object(
+            zbd_wallet_usd.client, "post", new_callable=AsyncMock
+        ) as mock_post:
+            mock_get.return_value = mock_rate_response
+            mock_post.return_value = mock_invoice_response
+
+            # Create invoice for $1.00 (100 cents)
+            result = await zbd_wallet_usd.create_invoice(
+                amount=Amount(Unit.usd, 100), memo="USD test invoice"
+            )
+
+            assert result.ok is True
+            assert result.checking_id == "charge_usd_123"
+            assert result.payment_request == "lnbc1000u1..."
+
+            # Verify correct msats amount
+            # $1.00 at $100,000/BTC = 1000 sats = 1,000,000 msats
+            call_args = mock_post.call_args
+            payload = call_args.kwargs["json"]
+            assert payload["amount"] == "1000000"
+            assert payload["description"] == "USD test invoice"
+
+    @pytest.mark.asyncio
+    async def test_create_invoice_usd_rate_error(self, zbd_wallet_usd):
+        """Test USD invoice creation fails gracefully on rate error."""
+        from cashu.lightning.zbd import ZBDWallet
+
+        ZBDWallet._rate_cache = None  # Ensure no cache
+
+        with patch.object(
+            zbd_wallet_usd.client, "get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.side_effect = Exception("Rate API unavailable")
+
+            result = await zbd_wallet_usd.create_invoice(
+                amount=Amount(Unit.usd, 100), memo="Test"
+            )
+
+            assert result.ok is False
+            assert "Exchange rate error" in result.error_message
+
+
+class TestCachedRate:
+    """Test the CachedRate dataclass."""
+
+    def test_is_fresh_within_ttl(self):
+        """Test that rate within 5 min TTL is fresh."""
+        from cashu.lightning.zbd import CachedRate
+
+        # 2 minutes ago
+        rate = CachedRate(rate=100000.0, timestamp=time.time() - 120)
+        assert rate.is_fresh() is True
+
+    def test_is_fresh_past_ttl(self):
+        """Test that rate past 5 min TTL is not fresh."""
+        from cashu.lightning.zbd import CachedRate
+
+        # 6 minutes ago
+        rate = CachedRate(rate=100000.0, timestamp=time.time() - 360)
+        assert rate.is_fresh() is False
+
+    def test_is_usable_within_circuit_breaker(self):
+        """Test that rate within 15 min is usable."""
+        from cashu.lightning.zbd import CachedRate
+
+        # 10 minutes ago
+        rate = CachedRate(rate=100000.0, timestamp=time.time() - 600)
+        assert rate.is_usable() is True
+
+    def test_is_usable_past_circuit_breaker(self):
+        """Test that rate past 15 min is not usable."""
+        from cashu.lightning.zbd import CachedRate
+
+        # 20 minutes ago
+        rate = CachedRate(rate=100000.0, timestamp=time.time() - 1200)
+        assert rate.is_usable() is False
 
 
 class TestInvoiceStatusMapping:
