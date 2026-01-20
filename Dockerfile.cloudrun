@@ -1,0 +1,76 @@
+# Multi-stage Dockerfile for Nutshell Cashu Mint on Cloud Run
+# Optimized for smaller image size and Cloud Run deployment
+
+# Stage 1: Build dependencies
+FROM python:3.10-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    python3-dev \
+    autoconf \
+    g++ \
+    libpq-dev \
+    build-essential \
+    automake \
+    pkg-config \
+    libtool \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 - --version 1.8.5
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+# Copy dependency files first for better caching
+COPY pyproject.toml poetry.lock* ./
+
+# Install dependencies without dev packages
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-dev --no-root --no-interaction
+
+# Copy source code
+COPY . .
+
+# Stage 2: Runtime image
+FROM python:3.10-slim AS runtime
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash mint
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --from=builder /app /app
+
+# Change ownership to non-root user
+RUN chown -R mint:mint /app
+
+USER mint
+
+# Cloud Run uses PORT env var, but Nutshell uses MINT_LISTEN_PORT
+# Default to 3338 as specified in PRD
+ENV MINT_LISTEN_PORT=3338
+ENV MINT_LISTEN_HOST=0.0.0.0
+
+# Expose port
+EXPOSE 3338
+
+# Health check for local testing (Cloud Run handles this differently)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${MINT_LISTEN_PORT}/v1/info || exit 1
+
+# Run the mint server
+CMD ["python", "-m", "cashu.mint"]
