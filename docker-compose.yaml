@@ -11,4 +11,5 @@ services:
       - MINT_LISTEN_HOST=0.0.0.0
       - MINT_LISTEN_PORT=3338
       - MINT_PRIVATE_KEY=TEST_PRIVATE_KEY
+      - MINT_INPUT_FEE_PPK=0
     command: ["poetry", "run", "mint"]
