@@ -68,6 +68,19 @@ jobs:
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
 
+      - name: Create env vars file
+        run: |
+          cat > /tmp/env-vars.yaml << 'EOF'
+          MINT_DERIVATION_PATH_LIST: '["m/0''/0''/0''","m/0''/2''/0''"]'
+          MINT_BACKEND_BOLT11_SAT: ZBDWallet
+          MINT_BACKEND_BOLT11_USD: ZBDWallet
+          MINT_ZBD_ENDPOINT: https://api.zebedee.io
+          MINT_ZBD_CALLBACK_URL: https://api-staging.wavlake.com/api/v1/webhooks/cashu/payment
+          MINT_BOLT11_DISABLE_MELT: "true"
+          MINT_LISTEN_HOST: 0.0.0.0
+          MINT_LISTEN_PORT: "3338"
+          EOF
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -80,7 +93,7 @@ jobs:
             --vpc-egress=all-traffic \
             --service-account=nutshell-mint@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
             --add-cloudsql-instances=${{ env.CLOUD_SQL_CONNECTION }} \
-            --set-env-vars="MINT_DERIVATION_PATH_LIST=[\"m/0'/0'/0'\",\"m/0'/2'/0'\"],MINT_BACKEND_BOLT11_SAT=ZBDWallet,MINT_BACKEND_BOLT11_USD=ZBDWallet,MINT_ZBD_ENDPOINT=https://api.zebedee.io,MINT_ZBD_CALLBACK_URL=https://api-staging.wavlake.com/api/v1/webhooks/cashu/payment,MINT_BOLT11_DISABLE_MELT=true,MINT_LISTEN_HOST=0.0.0.0,MINT_LISTEN_PORT=3338" \
+            --env-vars-file=/tmp/env-vars.yaml \
             --set-secrets=MINT_PRIVATE_KEY=nutshell-mint-private-key-staging:latest,MINT_ZBD_API_KEY=nutshell-zbd-api-key-staging:latest,MINT_DATABASE=nutshell-database-url-staging:latest \
             --max-instances=2 \
             --min-instances=0 \
