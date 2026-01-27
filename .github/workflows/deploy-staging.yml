@@ -1,0 +1,102 @@
+# Deploy Nutshell Cashu Mint to Cloud Run (Staging)
+#
+# Triggers on push to main branch.
+# Uses Workload Identity Federation for keyless GCP authentication.
+#
+# Prerequisites:
+# 1. Update workload identity provider to allow this repo:
+#    gcloud iam workload-identity-pools providers update-oidc github-provider \
+#      --workload-identity-pool=github-actions-pool \
+#      --location=global \
+#      --project=wavlake-alpha \
+#      --attribute-condition="assertion.repository=='wavlake/monorepo' || assertion.repository=='wavlake/nutshell'"
+#
+# 2. Grant service account impersonation:
+#    gcloud iam service-accounts add-iam-policy-binding cloud-builder@wavlake-alpha.iam.gserviceaccount.com \
+#      --project=wavlake-alpha \
+#      --role="roles/iam.workloadIdentityUser" \
+#      --member="principalSet://iam.googleapis.com/projects/854568123236/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/wavlake/nutshell"
+
+name: Deploy to Cloud Run (Staging)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: wavlake-alpha
+  REGION: us-central1
+  SERVICE_NAME: nutshell-staging
+  IMAGE: us-central1-docker.pkg.dev/wavlake-alpha/services/nutshell-staging
+  CLOUD_SQL_CONNECTION: wavlake-alpha:us-central1:wavlake-staging-psql-01
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/854568123236/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+          service_account: cloud-builder@wavlake-alpha.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            -f Dockerfile.cloudrun \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --ingress=all \
+            --vpc-connector=cloud-sql-postgres \
+            --vpc-egress=all-traffic \
+            --service-account=nutshell-mint@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --add-cloudsql-instances=${{ env.CLOUD_SQL_CONNECTION }} \
+            --set-env-vars="MINT_DERIVATION_PATH_LIST=[\"m/0'/0'/0'\",\"m/0'/2'/0'\"],MINT_BACKEND_BOLT11_SAT=ZBDWallet,MINT_BACKEND_BOLT11_USD=ZBDWallet,MINT_ZBD_ENDPOINT=https://api.zebedee.io,MINT_ZBD_CALLBACK_URL=https://api-staging.wavlake.com/api/v1/webhooks/cashu/payment,MINT_BOLT11_DISABLE_MELT=true,MINT_LISTEN_HOST=0.0.0.0,MINT_LISTEN_PORT=3338" \
+            --set-secrets=MINT_PRIVATE_KEY=nutshell-mint-private-key-staging:latest,MINT_ZBD_API_KEY=nutshell-zbd-api-key-staging:latest,MINT_DATABASE=nutshell-database-url-staging:latest \
+            --max-instances=2 \
+            --min-instances=0 \
+            --cpu=1 \
+            --memory=512Mi \
+            --timeout=60s \
+            --concurrency=80 \
+            --cpu-throttling \
+            --port=3338
+
+      - name: Verify deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "Deployed to: $SERVICE_URL"
+
+          # Health check
+          curl -sf "$SERVICE_URL/v1/info" | jq .
