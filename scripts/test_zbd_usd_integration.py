@@ -122,8 +122,6 @@ def test_conversion_accuracy(rate: float):
     for cents, description in test_cases:
         msats = cents_to_msats(cents, rate)
         sats = msats / 1000
-        dollars = cents / 100
-
         # Verify msats is divisible by 1000 (ZBD API requirement)
         if msats % 1000 != 0:
             print_fail(f"{description}: msats ({msats}) not divisible by 1000")
@@ -187,7 +185,7 @@ async def test_invoice_creation_usd(rate: float):
             status = data.get("status")
 
             if charge_id and invoice:
-                print_pass(f"Invoice created successfully!")
+                print_pass("Invoice created successfully!")
                 print_info(f"Charge ID: {charge_id}")
                 print_info(f"Status: {status}")
                 print_info(f"Invoice: {invoice}")
@@ -215,7 +213,7 @@ async def test_zbd_wallet_class():
 
     try:
         # Mock the settings since we're running standalone
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         mock_settings = MagicMock()
         mock_settings.mint_zbd_api_key = api_key
