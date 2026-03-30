@@ -354,6 +354,16 @@ class StripeFundingSource(MintSettings):
             " Required at runtime when using StripeWallet."
         ),
     )
+    mint_non_bolt11_quote_expiry_seconds: int = Field(
+        default=3600,
+        gt=0,
+        title="Non-BOLT11 quote expiry",
+        description=(
+            "Expiry time in seconds for mint quotes from non-BOLT11 backends"
+            " (e.g., StripeWallet). Should be at least as long as the"
+            " external payment session timeout. Default: 3600 (1 hour)."
+        ),
+    )
 
 
 class AuthSettings(MintSettings):

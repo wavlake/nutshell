@@ -117,12 +117,29 @@ class TestStripeWallet:
 
     @pytest.mark.asyncio
     async def test_status_returns_ok(self, stripe_wallet):
-        """Test that status returns zero balance with no error."""
-        result = await stripe_wallet.status()
+        """Test that status returns zero balance with no error when Redis is reachable."""
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock()
+        mock_redis.close = AsyncMock()
+
+        with patch("redis.asyncio.from_url", new_callable=AsyncMock) as mock_from_url:
+            mock_from_url.return_value = mock_redis
+            result = await stripe_wallet.status()
 
         assert result.error_message is None
         assert result.balance.amount == 0
         assert result.balance.unit == Unit.usd
+
+    @pytest.mark.asyncio
+    async def test_status_returns_error_on_redis_failure(self, stripe_wallet):
+        """Test that status returns error when Redis is unreachable."""
+        with patch("redis.asyncio.from_url", new_callable=AsyncMock) as mock_from_url:
+            mock_from_url.side_effect = Exception("Connection refused")
+            result = await stripe_wallet.status()
+
+        assert result.error_message is not None
+        assert "Redis connection failed" in result.error_message
+        assert result.balance.amount == 0
 
     @pytest.mark.asyncio
     async def test_pay_invoice_raises_unsupported(self, stripe_wallet):

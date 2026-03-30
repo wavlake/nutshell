@@ -91,13 +91,39 @@ class StripeWallet(LightningBackend):
         self._hmac_secret = hmac_secret.encode()
 
     async def status(self) -> StatusResponse:
-        """Check wallet status.
+        """Check wallet status by pinging Redis.
 
         Returns:
-            StatusResponse with zero balance and no error.
+            StatusResponse with zero balance and no error if Redis is
+            reachable, or an error message if the connection fails.
             Stripe balance is managed externally; this backend
             does not track balance.
         """
+        try:
+            import redis.asyncio as aioredis
+        except ImportError:
+            return StatusResponse(
+                error_message="redis package is not installed",
+                balance=Amount(Unit.usd, 0),
+            )
+
+        redis_url = getattr(settings, "mint_redis_url", None)
+        if not redis_url:
+            return StatusResponse(
+                error_message="MINT_REDIS_URL is not configured",
+                balance=Amount(Unit.usd, 0),
+            )
+
+        try:
+            redis_client = await aioredis.from_url(redis_url)
+            await redis_client.ping()
+            await redis_client.close()
+        except Exception as e:
+            return StatusResponse(
+                error_message=f"Redis connection failed: {e}",
+                balance=Amount(Unit.usd, 0),
+            )
+
         return StatusResponse(
             error_message=None,
             balance=Amount(Unit.usd, 0),
