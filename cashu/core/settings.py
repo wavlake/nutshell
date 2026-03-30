@@ -337,6 +337,35 @@ class ZBDFundingSource(MintSettings):
     )
 
 
+class StripeFundingSource(MintSettings):
+    """Stripe payment backend settings.
+
+    Used when MINT_BACKEND_BOLT11_USD=StripeWallet for Stripe payments
+    via Redis pub/sub. Requires mint_redis_url, which is inherited via
+    MRO since Settings also inherits ZBDFundingSource.
+    """
+
+    mint_redis_hmac_secret: Optional[str] = Field(
+        default=None,
+        title="Redis HMAC secret",
+        description=(
+            "Shared secret for HMAC-SHA256 verification of payment"
+            " notifications on the cashu:paid_invoices Redis channel."
+            " Required at runtime when using StripeWallet."
+        ),
+    )
+    mint_non_bolt11_quote_expiry_seconds: int = Field(
+        default=3600,
+        gt=0,
+        title="Non-BOLT11 quote expiry",
+        description=(
+            "Expiry time in seconds for mint quotes from non-BOLT11 backends"
+            " (e.g., StripeWallet). Should be at least as long as the"
+            " external payment session timeout. Default: 3600 (1 hour)."
+        ),
+    )
+
+
 class AuthSettings(MintSettings):
     mint_auth_database: str = Field(default="data/mint")
     mint_require_auth: bool = Field(default=False)
@@ -372,6 +401,7 @@ class Settings(
     CoreLightningRestFundingSource,
     CLNRestFundingSource,
     ZBDFundingSource,
+    StripeFundingSource,
     FakeWalletSettings,
     MintLimits,
     MintBackends,
