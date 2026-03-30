@@ -39,7 +39,6 @@ for key, value in settings.dict().items():
         "mint_lnd_rest_invoice_macaroon",
         "mint_corelightning_rest_macaroon",
         "mint_clnrest_rune",
-        "mint_redis_url",
     ]:
         value = "********" if value is not None else None
 

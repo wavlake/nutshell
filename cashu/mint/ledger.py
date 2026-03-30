@@ -344,24 +344,15 @@ class Ledger(
             raise LightningError("could not fetch bolt11 payment request from backend")
 
         # get invoice expiry time
-        # NOTE: Non-BOLT11 backends (e.g., StripeWallet) return a UUID as
-        # payment_request. We attempt to decode as BOLT11 and fall back to
-        # a default 15-minute expiry for non-BOLT11 formats.
-        try:
-            invoice_obj = bolt11.decode(invoice_response.payment_request)
-        except Exception:
-            invoice_obj = None
+        invoice_obj = bolt11.decode(invoice_response.payment_request)
 
         # NOTE: we normalize the request to lowercase to avoid case sensitivity
         # This works with Lightning but might not work with other methods
         request = invoice_response.payment_request.lower()
 
         expiry = None
-        if invoice_obj is not None and invoice_obj.expiry is not None:
+        if invoice_obj.expiry is not None:
             expiry = invoice_obj.date + invoice_obj.expiry
-        elif invoice_obj is None:
-            # Non-BOLT11 backend: default 15-minute expiry
-            expiry = int(time.time()) + 900
 
         quote = MintQuote(
             quote=random_hash(),
