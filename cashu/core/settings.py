@@ -343,10 +343,17 @@ class StripeFundingSource(MintSettings):
     Used when MINT_BACKEND_BOLT11_USD=StripeWallet for Stripe payments
     via Redis pub/sub. Requires mint_redis_url, which is inherited via
     MRO since Settings also inherits ZBDFundingSource.
-    No additional settings required.
     """
 
-    pass
+    mint_redis_hmac_secret: Optional[str] = Field(
+        default=None,
+        title="Redis HMAC secret",
+        description=(
+            "Shared secret for HMAC-SHA256 verification of payment"
+            " notifications on the cashu:paid_invoices Redis channel."
+            " Required at runtime when using StripeWallet."
+        ),
+    )
 
 
 class AuthSettings(MintSettings):
