@@ -39,7 +39,6 @@ for key, value in settings.dict().items():
         "mint_lnd_rest_invoice_macaroon",
         "mint_corelightning_rest_macaroon",
         "mint_clnrest_rune",
-        "mint_redis_url",
         "mint_stripe_callback_secret",
         "mint_zbd_callback_secret",
     ]:

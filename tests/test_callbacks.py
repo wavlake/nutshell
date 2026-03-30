@@ -105,6 +105,17 @@ class TestStripeCallback:
         )
         assert resp.status_code == 422
 
+    def test_dispatcher_error_returns_500(self, client, mock_ledger):
+        """Dispatcher exception returns structured 500 JSON error."""
+        mock_ledger.invoice_callback_dispatcher.side_effect = Exception("DB error")
+        resp = client.post(
+            "/v1/callbacks/stripe-payment",
+            json={"checking_id": "abc-123"},
+            headers={"Authorization": "Bearer test-stripe-secret"},
+        )
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal error"}
+
 
 class TestZBDCallback:
     """Tests for POST /v1/callbacks/zbd-payment."""
@@ -159,6 +170,17 @@ class TestZBDCallback:
             )
             assert resp.status_code == 503
             mock_ledger.invoice_callback_dispatcher.assert_not_called()
+
+    def test_dispatcher_error_returns_500(self, client, mock_ledger):
+        """Dispatcher exception returns structured 500 JSON error."""
+        mock_ledger.invoice_callback_dispatcher.side_effect = Exception("DB error")
+        resp = client.post(
+            "/v1/callbacks/zbd-payment",
+            json={"checking_id": "charge-456"},
+            headers={"Authorization": "Bearer test-zbd-secret"},
+        )
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal error"}
 
     def test_stripe_token_doesnt_work_for_zbd(self, client, mock_ledger):
         """Stripe callback secret should not authenticate ZBD endpoint."""

@@ -31,6 +31,43 @@ def _verify_bearer_token(request: Request, expected_secret: str) -> bool:
     return hmac.compare_digest(token, expected_secret)
 
 
+async def _handle_payment_callback(
+    request: Request, body: PaymentCallbackRequest, secret_attr: str, backend_name: str
+) -> JSONResponse:
+    """Shared handler for payment callback endpoints."""
+    secret = getattr(settings, secret_attr, None)
+    if not secret:
+        logger.error(
+            f"{backend_name} callback received but"
+            f" {secret_attr.upper()} is not configured"
+        )
+        return JSONResponse(
+            status_code=503,
+            content={"detail": f"{backend_name} callbacks not configured"},
+        )
+
+    if not _verify_bearer_token(request, secret):
+        logger.warning(f"{backend_name} callback rejected: invalid bearer token")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid authorization"},
+        )
+
+    logger.info(f"{backend_name} callback received for checking_id={body.checking_id}")
+    try:
+        await ledger.invoice_callback_dispatcher(body.checking_id)
+    except Exception:
+        logger.exception(
+            f"Failed to dispatch {backend_name} callback"
+            f" for checking_id={body.checking_id}"
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal error"},
+        )
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
 @callback_router.post(
     "/v1/callbacks/stripe-payment",
     name="Stripe payment callback",
@@ -39,24 +76,9 @@ def _verify_bearer_token(request: Request, expected_secret: str) -> bool:
 async def stripe_payment_callback(
     request: Request, body: PaymentCallbackRequest
 ) -> JSONResponse:
-    secret = getattr(settings, "mint_stripe_callback_secret", None)
-    if not secret:
-        logger.error("Stripe callback received but MINT_STRIPE_CALLBACK_SECRET is not configured")
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Stripe callbacks not configured"},
-        )
-
-    if not _verify_bearer_token(request, secret):
-        logger.warning(f"Stripe callback rejected: invalid bearer token for checking_id={body.checking_id}")
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid authorization"},
-        )
-
-    logger.info(f"Stripe callback received for checking_id={body.checking_id}")
-    await ledger.invoice_callback_dispatcher(body.checking_id)
-    return JSONResponse(status_code=200, content={"status": "ok"})
+    return await _handle_payment_callback(
+        request, body, "mint_stripe_callback_secret", "Stripe"
+    )
 
 
 @callback_router.post(
@@ -67,21 +89,6 @@ async def stripe_payment_callback(
 async def zbd_payment_callback(
     request: Request, body: PaymentCallbackRequest
 ) -> JSONResponse:
-    secret = getattr(settings, "mint_zbd_callback_secret", None)
-    if not secret:
-        logger.error("ZBD callback received but MINT_ZBD_CALLBACK_SECRET is not configured")
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "ZBD callbacks not configured"},
-        )
-
-    if not _verify_bearer_token(request, secret):
-        logger.warning(f"ZBD callback rejected: invalid bearer token for checking_id={body.checking_id}")
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid authorization"},
-        )
-
-    logger.info(f"ZBD callback received for checking_id={body.checking_id}")
-    await ledger.invoice_callback_dispatcher(body.checking_id)
-    return JSONResponse(status_code=200, content={"status": "ok"})
+    return await _handle_payment_callback(
+        request, body, "mint_zbd_callback_secret", "ZBD"
+    )
