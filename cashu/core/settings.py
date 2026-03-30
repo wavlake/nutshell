@@ -337,6 +337,17 @@ class ZBDFundingSource(MintSettings):
     )
 
 
+class StripeFundingSource(MintSettings):
+    """Stripe payment backend settings.
+
+    Used when MINT_BACKEND_BOLT11_USD=StripeWallet for Stripe payments
+    via Redis pub/sub. Reuses mint_redis_url from ZBDFundingSource.
+    No additional settings required.
+    """
+
+    pass
+
+
 class AuthSettings(MintSettings):
     mint_auth_database: str = Field(default="data/mint")
     mint_require_auth: bool = Field(default=False)
@@ -372,6 +383,7 @@ class Settings(
     CoreLightningRestFundingSource,
     CLNRestFundingSource,
     ZBDFundingSource,
+    StripeFundingSource,
     FakeWalletSettings,
     MintLimits,
     MintBackends,
