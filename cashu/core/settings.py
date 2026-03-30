@@ -341,7 +341,8 @@ class StripeFundingSource(MintSettings):
     """Stripe payment backend settings.
 
     Used when MINT_BACKEND_BOLT11_USD=StripeWallet for Stripe payments
-    via Redis pub/sub. Reuses mint_redis_url from ZBDFundingSource.
+    via Redis pub/sub. Requires mint_redis_url, which is inherited via
+    MRO since Settings also inherits ZBDFundingSource.
     No additional settings required.
     """
 

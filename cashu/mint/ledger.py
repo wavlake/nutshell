@@ -349,11 +349,11 @@ class Ledger(
         # a default 15-minute expiry for non-BOLT11 formats.
         try:
             invoice_obj = bolt11.decode(invoice_response.payment_request)
-        except Exception:
+        except bolt11.Bolt11Exception:
             invoice_obj = None
 
-        # NOTE: we normalize the request to lowercase to avoid case sensitivity
-        # This works with Lightning but might not work with other methods
+        # NOTE: we normalize the request to lowercase to avoid case sensitivity.
+        # Safe for both BOLT11 (case-insensitive bech32) and UUIDs (lowercase hex).
         request = invoice_response.payment_request.lower()
 
         expiry = None
