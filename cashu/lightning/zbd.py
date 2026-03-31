@@ -2,8 +2,8 @@
 
 This module provides a Lightning backend implementation that interfaces directly
 with the ZBD API for invoice creation and status checking. It is designed for
-melt-disabled configurations (consumption-only tokens) and supports webhook-based
-payment notifications via Redis pub/sub.
+melt-disabled configurations (consumption-only tokens) and supports payment
+notifications via HTTP callbacks from the Go API.
 
 Supports both sat and USD denominations. USD amounts are converted to msats using
 ZBD's exchange rate API with caching and circuit breaker fallback.
@@ -75,14 +75,14 @@ class ZBDWallet(LightningBackend):
     Attributes:
         supported_units: Set of supported currency units (sat and usd).
         supports_mpp: Multi-path payment support (disabled).
-        supports_incoming_payment_stream: Webhook support via Redis (enabled).
+        supports_incoming_payment_stream: Disabled (uses HTTP callbacks instead).
         supports_description: Invoice description support (enabled).
         unit: The currency unit for this backend instance.
     """
 
     supported_units = {Unit.sat, Unit.usd}
     supports_mpp = False
-    supports_incoming_payment_stream = True
+    supports_incoming_payment_stream = False
     supports_description = True
 
     # Class-level exchange rate cache (shared across instances)
@@ -349,43 +349,9 @@ class ZBDWallet(LightningBackend):
         raise Unsupported("Melt (get_payment_quote) is disabled for ZBDWallet")
 
     async def paid_invoices_stream(self) -> AsyncGenerator[str, None]:
-        """Stream paid invoice IDs from Redis pub/sub.
+        """Not used. Payment notifications arrive via HTTP callbacks."""
+        raise NotImplementedError(
+            "ZBDWallet uses HTTP callbacks, not paid_invoices_stream"
+        )
+        yield ""  # pragma: no cover
 
-        Webhooks from ZBD are received by the monorepo API and published
-        to Redis. This method subscribes to that channel and yields
-        invoice IDs (checking_ids) as they are paid.
-
-        Yields:
-            checking_id (str): The ZBD charge ID of the paid invoice.
-
-        Raises:
-            RuntimeError: If redis package is not installed or MINT_REDIS_URL
-                is not configured.
-        """
-        # Import here to avoid hard dependency when not using webhooks
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            raise RuntimeError(
-                "redis package required for paid_invoices_stream. "
-                "Install with: pip install redis"
-            )
-
-        redis_url = getattr(settings, "mint_redis_url", None)
-        if not redis_url:
-            raise RuntimeError(
-                "MINT_REDIS_URL environment variable required for paid_invoices_stream"
-            )
-
-        redis_client = await aioredis.from_url(redis_url)
-        pubsub = redis_client.pubsub()
-        await pubsub.subscribe("cashu:paid_invoices")
-
-        try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    checking_id = message["data"].decode()
-                    yield checking_id
-        finally:
-            await pubsub.unsubscribe("cashu:paid_invoices")
-            await redis_client.close()

@@ -6,7 +6,6 @@ Tests cover:
 - Melt operations raising Unsupported exceptions
 - Supported units validation (sat and usd)
 - USD exchange rate fetching and caching
-- Webhook stream configuration
 """
 
 import time
@@ -28,7 +27,6 @@ class TestZBDWallet:
             mock_settings.mint_zbd_api_key = "test_api_key"
             mock_settings.mint_zbd_endpoint = "https://api.zebedee.io"
             mock_settings.mint_zbd_callback_url = "https://example.com/webhook"
-            mock_settings.mint_redis_url = "redis://localhost:6379"
             yield mock_settings
 
     @pytest.fixture
@@ -78,8 +76,8 @@ class TestZBDWallet:
             ZBDWallet(unit=Unit.eur)
 
     def test_supports_incoming_payment_stream(self, zbd_wallet):
-        """Test that webhook stream is supported."""
-        assert zbd_wallet.supports_incoming_payment_stream is True
+        """Test that incoming payment stream is disabled (uses HTTP callbacks)."""
+        assert zbd_wallet.supports_incoming_payment_stream is False
 
     def test_supports_description(self, zbd_wallet):
         """Test that invoice descriptions are supported."""
@@ -334,26 +332,6 @@ class TestZBDWallet:
         with pytest.raises(Unsupported, match="Melt.*disabled"):
             await zbd_wallet.get_payment_quote(MagicMock())
 
-    @pytest.mark.asyncio
-    async def test_paid_invoices_stream_requires_redis(self, zbd_wallet):
-        """Test that paid_invoices_stream requires redis package."""
-        # Mock redis not being installed
-        with patch.dict("sys.modules", {"redis": None, "redis.asyncio": None}):
-            with pytest.raises(RuntimeError, match="redis package required"):
-                async for _ in zbd_wallet.paid_invoices_stream():
-                    pass
-
-    @pytest.mark.asyncio
-    async def test_paid_invoices_stream_requires_redis_url(self, mock_settings):
-        """Test that paid_invoices_stream requires MINT_REDIS_URL."""
-        from cashu.lightning.zbd import ZBDWallet
-
-        mock_settings.mint_redis_url = None
-        wallet = ZBDWallet(unit=Unit.sat)
-
-        with pytest.raises(RuntimeError, match="MINT_REDIS_URL"):
-            async for _ in wallet.paid_invoices_stream():
-                pass
 
 
 class TestUSDSupport:
@@ -366,7 +344,6 @@ class TestUSDSupport:
             mock_settings.mint_zbd_api_key = "test_api_key"
             mock_settings.mint_zbd_endpoint = "https://api.zebedee.io"
             mock_settings.mint_zbd_callback_url = "https://example.com/webhook"
-            mock_settings.mint_redis_url = "redis://localhost:6379"
             yield mock_settings
 
     @pytest.fixture

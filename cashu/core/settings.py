@@ -331,9 +331,9 @@ class ZBDFundingSource(MintSettings):
         default=None,
         description="Webhook callback URL for payment notifications.",
     )
-    mint_redis_url: Optional[str] = Field(
+    mint_zbd_callback_secret: Optional[str] = Field(
         default=None,
-        description="Redis URL for webhook pub/sub (e.g., redis://localhost:6379).",
+        description="Bearer token for authenticating HTTP callback requests from the Go API.",
     )
 
 
@@ -341,17 +341,15 @@ class StripeFundingSource(MintSettings):
     """Stripe payment backend settings.
 
     Used when MINT_BACKEND_BOLT11_USD=StripeWallet for Stripe payments
-    via Redis pub/sub. Requires mint_redis_url, which is inherited via
-    MRO since Settings also inherits ZBDFundingSource.
+    via HTTP callbacks. The Go API calls the mint's callback endpoint
+    with a bearer token when Stripe webhooks confirm payment.
     """
 
-    mint_redis_hmac_secret: Optional[str] = Field(
+    mint_stripe_callback_secret: Optional[str] = Field(
         default=None,
-        title="Redis HMAC secret",
         description=(
-            "Shared secret for HMAC-SHA256 verification of payment"
-            " notifications on the cashu:paid_invoices Redis channel."
-            " Required at runtime when using StripeWallet."
+            "Bearer token for authenticating HTTP callback requests"
+            " from the Go API. Required at runtime when using StripeWallet."
         ),
     )
     mint_non_bolt11_quote_expiry_seconds: int = Field(
