@@ -94,7 +94,7 @@ jobs:
             --service-account=nutshell-mint@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
             --add-cloudsql-instances=${{ env.CLOUD_SQL_CONNECTION }} \
             --env-vars-file=/tmp/env-vars.yaml \
-            --set-secrets=MINT_PRIVATE_KEY=nutshell-mint-private-key-staging:latest,MINT_ZBD_API_KEY=nutshell-zbd-api-key-staging:latest,MINT_DATABASE=nutshell-database-url-staging:latest \
+            --set-secrets=MINT_PRIVATE_KEY=nutshell-mint-private-key-staging:latest,MINT_ZBD_API_KEY=nutshell-zbd-api-key-staging:latest,MINT_DATABASE=nutshell-database-url-staging:latest,MINT_STRIPE_CALLBACK_SECRET=MINT_STRIPE_CALLBACK_SECRET:latest \
             --max-instances=2 \
             --min-instances=0 \
             --cpu=1 \
