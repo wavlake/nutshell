@@ -52,8 +52,13 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
                 checking_id=checking_id, db=self.db, conn=conn
             )
             if not quote:
-                logger.error(f"Quote not found for {checking_id}")
-                return
+                # Fallback: caller may have sent the payment request (bolt11)
+                # instead of the internal checking_id (e.g. ZBD charge UUID).
+                quote = await self.crud.get_mint_quote(
+                    request=checking_id, db=self.db, conn=conn
+                )
+            if not quote:
+                raise Exception(f"Quote not found for checking_id={checking_id}")
 
             logger.trace(
                 f"Invoice callback dispatcher: quote {quote} trying to set as {MintQuoteState.paid}"

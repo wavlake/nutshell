@@ -315,9 +315,20 @@ class Ledger(
             quote_request.unit, Method.bolt11.name
         )
 
+        # Select the sub-backend for composite wallets (e.g. ZBDStripeWallet)
+        backend_obj = self.backends[method][unit]
+        backend_name = quote_request.backend
+        if hasattr(backend_obj, "get_backend"):
+            selected_backend = backend_obj.get_backend(backend_name)
+            # Normalise: if no explicit name was given, record the default
+            if not backend_name:
+                backend_name = getattr(backend_obj, "DEFAULT_BACKEND", None)
+        else:
+            selected_backend = backend_obj
+
         if (
             quote_request.description
-            and not self.backends[method][unit].supports_description
+            and not selected_backend.supports_description
         ):
             raise NotAllowedError("Backend does not support descriptions.")
 
@@ -329,9 +340,7 @@ class Ledger(
                 raise NotAllowedError("Mint has reached maximum balance.")
 
         logger.trace(f"requesting invoice for {unit.str(quote_request.amount)}")
-        invoice_response: InvoiceResponse = await self.backends[method][
-            unit
-        ].create_invoice(
+        invoice_response: InvoiceResponse = await selected_backend.create_invoice(
             amount=Amount(unit=unit, amount=quote_request.amount),
             memo=quote_request.description,
         )
@@ -374,6 +383,7 @@ class Ledger(
             created_time=int(time.time()),
             expiry=expiry,
             pubkey=quote_request.pubkey,
+            backend=backend_name,
         )
         await self.crud.store_mint_quote(quote=quote, db=self.db)
         await self.events.submit(quote)
@@ -402,9 +412,13 @@ class Ledger(
             if not quote.checking_id:
                 raise CashuError("quote has no checking id")
             logger.trace(f"Lightning: checking invoice {quote.checking_id}")
-            status: PaymentStatus = await self.backends[method][
-                unit
-            ].get_invoice_status(quote.checking_id)
+            # Route to the correct sub-backend for composite wallets
+            backend_obj = self.backends[method][unit]
+            if hasattr(backend_obj, "get_backend") and quote.backend:
+                backend_obj = backend_obj.get_backend(quote.backend)
+            status: PaymentStatus = await backend_obj.get_invoice_status(
+                quote.checking_id
+            )
             if status.settled:
                 # change state to paid in one transaction, it could have been marked paid
                 # by the invoice listener in the mean time

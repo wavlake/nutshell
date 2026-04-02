@@ -1225,3 +1225,14 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
             # Postgres supports dropping columns directly
             await conn.execute("ALTER TABLE mint_quotes DROP COLUMN IF EXISTS paid;")
             await conn.execute("ALTER TABLE mint_quotes DROP COLUMN IF EXISTS issued;")
+
+
+async def m033_add_backend_to_mint_quotes(db: Database):
+    """Add backend column to mint_quotes for composite wallet support."""
+    async with db.connect() as conn:
+        await conn.execute(
+            f"""
+                ALTER TABLE {db.table_with_schema('mint_quotes')}
+                ADD COLUMN backend TEXT DEFAULT NULL
+            """
+        )
