@@ -146,9 +146,6 @@ class PostMintQuoteRequest(BaseModel):
     pubkey: Optional[str] = Field(
         default=None, max_length=settings.mint_max_request_length
     )  # NUT-20 quote lock pubkey
-    backend: Optional[str] = Field(
-        default=None, max_length=settings.mint_max_request_length
-    )  # sub-backend name for composite wallets (e.g. "zbd", "stripe")
 
 
 class PostMintQuoteResponse(BaseModel):

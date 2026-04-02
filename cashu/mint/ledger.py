@@ -286,11 +286,17 @@ class Ledger(
 
     # ------- TRANSACTIONS -------
 
-    async def mint_quote(self, quote_request: PostMintQuoteRequest) -> MintQuote:
+    async def mint_quote(
+        self,
+        quote_request: PostMintQuoteRequest,
+        backend: Optional[str] = None,
+    ) -> MintQuote:
         """Creates a mint quote and stores it in the database.
 
         Args:
             quote_request (PostMintQuoteRequest): Mint quote request.
+            backend (Optional[str]): Sub-backend name for composite wallets
+                (e.g. "zbd", "stripe"). Passed via X-Cashu-Backend header.
 
         Raises:
             Exception: Quote creation failed.
@@ -317,7 +323,7 @@ class Ledger(
 
         # Select the sub-backend for composite wallets (e.g. ZBDStripeWallet)
         backend_obj = self.backends[method][unit]
-        backend_name = quote_request.backend
+        backend_name = backend
         if hasattr(backend_obj, "get_backend"):
             selected_backend = backend_obj.get_backend(backend_name)
             # Normalise: if no explicit name was given, record the default
