@@ -429,6 +429,7 @@ class MintQuote(LedgerEvent):
     mint: Optional[str] = None
     privkey: Optional[str] = None
     pubkey: Optional[str] = None
+    backend: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: Row):
@@ -454,6 +455,7 @@ class MintQuote(LedgerEvent):
             paid_time=paid_time,
             pubkey=row["pubkey"] if "pubkey" in row.keys() else None,
             privkey=row["privkey"] if "privkey" in row.keys() else None,
+            backend=row["backend"] if "backend" in row.keys() else None,
         )
 
     @classmethod

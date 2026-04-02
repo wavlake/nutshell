@@ -60,7 +60,7 @@ def _dummy_ledger():
         motd="Hello",
     )
 
-    async def mint_quote(payload):
+    async def mint_quote(payload, backend=None):
         return SimpleNamespace(
             quote="quote-1",
             request="lnbc1",

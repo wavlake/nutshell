@@ -3,6 +3,7 @@ import json
 from typing import List
 
 from sqlalchemy import RowMapping
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from ..core.base import MeltQuoteState, MintKeyset, MintQuoteState, Proof
 from ..core.crypto.keys import derive_keyset_id, derive_keyset_id_deprecated
@@ -1225,3 +1226,18 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
             # Postgres supports dropping columns directly
             await conn.execute("ALTER TABLE mint_quotes DROP COLUMN IF EXISTS paid;")
             await conn.execute("ALTER TABLE mint_quotes DROP COLUMN IF EXISTS issued;")
+
+
+async def m033_add_backend_to_mint_quotes(db: Database):
+    """Add backend column to mint_quotes for composite wallet support."""
+    async with db.connect() as conn:
+        try:
+            await conn.execute(
+                f"""
+                    ALTER TABLE {db.table_with_schema('mint_quotes')}
+                    ADD COLUMN backend TEXT DEFAULT NULL
+                """
+            )
+        except (OperationalError, ProgrammingError):
+            # Column may already exist from a partial migration run
+            pass

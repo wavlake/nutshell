@@ -169,7 +169,8 @@ async def mint_quote(
     Call `POST /v1/mint/bolt11` after paying the invoice.
     """
     logger.trace(f"> POST /v1/mint/quote/bolt11: payload={payload}")
-    quote = await ledger.mint_quote(payload)
+    backend = request.headers.get("X-Cashu-Backend")
+    quote = await ledger.mint_quote(payload, backend=backend)
     resp = PostMintQuoteResponse(
         quote=quote.quote,
         request=quote.request,

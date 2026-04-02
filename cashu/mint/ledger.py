@@ -286,11 +286,17 @@ class Ledger(
 
     # ------- TRANSACTIONS -------
 
-    async def mint_quote(self, quote_request: PostMintQuoteRequest) -> MintQuote:
+    async def mint_quote(
+        self,
+        quote_request: PostMintQuoteRequest,
+        backend: Optional[str] = None,
+    ) -> MintQuote:
         """Creates a mint quote and stores it in the database.
 
         Args:
             quote_request (PostMintQuoteRequest): Mint quote request.
+            backend (Optional[str]): Sub-backend name for composite wallets
+                (e.g. "zbd", "stripe"). Passed via X-Cashu-Backend header.
 
         Raises:
             Exception: Quote creation failed.
@@ -315,9 +321,20 @@ class Ledger(
             quote_request.unit, Method.bolt11.name
         )
 
+        # Select the sub-backend for composite wallets (e.g. ZBDStripeWallet)
+        wallet = self.backends[method][unit]
+        selected_backend = (
+            wallet.get_backend(backend) if hasattr(wallet, "get_backend") else wallet
+        )
+        backend_name = (
+            (backend or wallet.default_backend_name)
+            if hasattr(wallet, "default_backend_name")
+            else None
+        )
+
         if (
             quote_request.description
-            and not self.backends[method][unit].supports_description
+            and not selected_backend.supports_description
         ):
             raise NotAllowedError("Backend does not support descriptions.")
 
@@ -329,9 +346,7 @@ class Ledger(
                 raise NotAllowedError("Mint has reached maximum balance.")
 
         logger.trace(f"requesting invoice for {unit.str(quote_request.amount)}")
-        invoice_response: InvoiceResponse = await self.backends[method][
-            unit
-        ].create_invoice(
+        invoice_response: InvoiceResponse = await selected_backend.create_invoice(
             amount=Amount(unit=unit, amount=quote_request.amount),
             memo=quote_request.description,
         )
@@ -374,6 +389,7 @@ class Ledger(
             created_time=int(time.time()),
             expiry=expiry,
             pubkey=quote_request.pubkey,
+            backend=backend_name,
         )
         await self.crud.store_mint_quote(quote=quote, db=self.db)
         await self.events.submit(quote)
@@ -402,9 +418,16 @@ class Ledger(
             if not quote.checking_id:
                 raise CashuError("quote has no checking id")
             logger.trace(f"Lightning: checking invoice {quote.checking_id}")
-            status: PaymentStatus = await self.backends[method][
-                unit
-            ].get_invoice_status(quote.checking_id)
+            # Route to the correct sub-backend for composite wallets
+            wallet = self.backends[method][unit]
+            selected_backend = (
+                wallet.get_backend(quote.backend)
+                if hasattr(wallet, "get_backend")
+                else wallet
+            )
+            status: PaymentStatus = await selected_backend.get_invoice_status(
+                quote.checking_id
+            )
             if status.settled:
                 # change state to paid in one transaction, it could have been marked paid
                 # by the invoice listener in the mean time

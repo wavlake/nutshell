@@ -10,6 +10,7 @@ from .lndrest import LndRestWallet  # noqa: F401
 from .strike import StrikeWallet  # noqa: F401
 from .stripe import StripeWallet  # noqa: F401
 from .zbd import ZBDWallet  # noqa: F401
+from .zbd_stripe import ZBDStripeWallet  # noqa: F401
 
 backend_settings = [
     settings.mint_backend_bolt11_sat,
