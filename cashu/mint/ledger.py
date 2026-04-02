@@ -323,16 +323,8 @@ class Ledger(
 
         # Select the sub-backend for composite wallets (e.g. ZBDStripeWallet)
         backend_obj = self.backends[method][unit]
-        backend_name = backend
-        if hasattr(backend_obj, "get_backend"):
-            selected_backend = backend_obj.get_backend(backend_name)
-            # Normalise: if no explicit name was given, record the default
-            if not backend_name:
-                from cashu.lightning.zbd_stripe import DEFAULT_BACKEND
-
-                backend_name = DEFAULT_BACKEND
-        else:
-            selected_backend = backend_obj
+        selected_backend = backend_obj.get_backend(backend)
+        backend_name = backend or backend_obj.default_backend_name
 
         if (
             quote_request.description
@@ -422,8 +414,7 @@ class Ledger(
             logger.trace(f"Lightning: checking invoice {quote.checking_id}")
             # Route to the correct sub-backend for composite wallets
             backend_obj = self.backends[method][unit]
-            if hasattr(backend_obj, "get_backend") and quote.backend:
-                backend_obj = backend_obj.get_backend(quote.backend)
+            backend_obj = backend_obj.get_backend(quote.backend)
             status: PaymentStatus = await backend_obj.get_invoice_status(
                 quote.checking_id
             )

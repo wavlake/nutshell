@@ -71,6 +71,10 @@ class ZBDStripeWallet(LightningBackend):
     # Sub-backend selection (called by the ledger)
     # ------------------------------------------------------------------
 
+    @property
+    def default_backend_name(self) -> str:
+        return DEFAULT_BACKEND
+
     def get_backend(self, name: Optional[str] = None) -> LightningBackend:
         """Return a sub-backend by name, or the default (ZBD)."""
         key = name or DEFAULT_BACKEND
