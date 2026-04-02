@@ -322,7 +322,9 @@ class Ledger(
             selected_backend = backend_obj.get_backend(backend_name)
             # Normalise: if no explicit name was given, record the default
             if not backend_name:
-                backend_name = getattr(backend_obj, "DEFAULT_BACKEND", None)
+                from cashu.lightning.zbd_stripe import DEFAULT_BACKEND
+
+                backend_name = DEFAULT_BACKEND
         else:
             selected_backend = backend_obj
 

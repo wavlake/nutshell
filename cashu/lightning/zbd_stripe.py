@@ -13,6 +13,7 @@ from typing import AsyncGenerator, List, Optional
 from loguru import logger
 
 from ..core.base import Amount, MeltQuote, Unit
+from ..core.errors import NotAllowedError
 from ..core.models import PostMeltQuoteRequest
 from .base import (
     InvoiceResponse,
@@ -74,7 +75,7 @@ class ZBDStripeWallet(LightningBackend):
         """Return a sub-backend by name, or the default (ZBD)."""
         key = name or DEFAULT_BACKEND
         if key not in self._backends:
-            raise ValueError(
+            raise NotAllowedError(
                 f"Unknown backend '{key}'. "
                 f"Available: {', '.join(self._backends.keys())}"
             )

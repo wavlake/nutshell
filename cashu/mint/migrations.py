@@ -1230,9 +1230,13 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
 async def m033_add_backend_to_mint_quotes(db: Database):
     """Add backend column to mint_quotes for composite wallet support."""
     async with db.connect() as conn:
-        await conn.execute(
-            f"""
-                ALTER TABLE {db.table_with_schema('mint_quotes')}
-                ADD COLUMN backend TEXT DEFAULT NULL
-            """
-        )
+        try:
+            await conn.execute(
+                f"""
+                    ALTER TABLE {db.table_with_schema('mint_quotes')}
+                    ADD COLUMN backend TEXT DEFAULT NULL
+                """
+            )
+        except Exception:
+            # Column may already exist from a partial migration run
+            pass
