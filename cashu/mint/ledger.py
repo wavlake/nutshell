@@ -414,8 +414,8 @@ class Ledger(
             logger.trace(f"Lightning: checking invoice {quote.checking_id}")
             # Route to the correct sub-backend for composite wallets
             backend_obj = self.backends[method][unit]
-            backend_obj = backend_obj.get_backend(quote.backend)
-            status: PaymentStatus = await backend_obj.get_invoice_status(
+            selected_backend = backend_obj.get_backend(quote.backend)
+            status: PaymentStatus = await selected_backend.get_invoice_status(
                 quote.checking_id
             )
             if status.settled:
