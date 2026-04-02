@@ -144,6 +144,7 @@ class MintManagementRPC(management_pb2_grpc.MintServicer):
         mint_quote_dict['state'] = str(mint_quote_dict['state'])
         del mint_quote_dict['mint'] # unused
         del mint_quote_dict['privkey'] # unused
+        del mint_quote_dict['backend'] # not in proto yet
         return management_pb2.GetNut04QuoteResponse(
             quote=management_pb2.Nut04Quote(**mint_quote_dict)
         )
