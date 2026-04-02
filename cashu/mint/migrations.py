@@ -3,7 +3,7 @@ import json
 from typing import List
 
 from sqlalchemy import RowMapping
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from ..core.base import MeltQuoteState, MintKeyset, MintQuoteState, Proof
 from ..core.crypto.keys import derive_keyset_id, derive_keyset_id_deprecated
@@ -1238,6 +1238,6 @@ async def m033_add_backend_to_mint_quotes(db: Database):
                     ADD COLUMN backend TEXT DEFAULT NULL
                 """
             )
-        except OperationalError:
+        except (OperationalError, ProgrammingError):
             # Column may already exist from a partial migration run
             pass
