@@ -322,9 +322,15 @@ class Ledger(
         )
 
         # Select the sub-backend for composite wallets (e.g. ZBDStripeWallet)
-        backend_obj = self.backends[method][unit]
-        selected_backend = backend_obj.get_backend(backend)
-        backend_name = backend or backend_obj.default_backend_name
+        wallet = self.backends[method][unit]
+        selected_backend = (
+            wallet.get_backend(backend) if hasattr(wallet, "get_backend") else wallet
+        )
+        backend_name = (
+            (backend or wallet.default_backend_name)
+            if hasattr(wallet, "default_backend_name")
+            else None
+        )
 
         if (
             quote_request.description
@@ -413,8 +419,12 @@ class Ledger(
                 raise CashuError("quote has no checking id")
             logger.trace(f"Lightning: checking invoice {quote.checking_id}")
             # Route to the correct sub-backend for composite wallets
-            backend_obj = self.backends[method][unit]
-            selected_backend = backend_obj.get_backend(quote.backend)
+            wallet = self.backends[method][unit]
+            selected_backend = (
+                wallet.get_backend(quote.backend)
+                if hasattr(wallet, "get_backend")
+                else wallet
+            )
             status: PaymentStatus = await selected_backend.get_invoice_status(
                 quote.checking_id
             )

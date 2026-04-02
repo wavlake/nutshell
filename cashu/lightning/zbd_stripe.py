@@ -20,7 +20,6 @@ from .base import (
     LightningBackend,
     PaymentQuoteResponse,
     PaymentResponse,
-    PaymentResult,
     PaymentStatus,
     StatusResponse,
     Unsupported,
@@ -109,14 +108,8 @@ class ZBDStripeWallet(LightningBackend):
         )
 
     async def get_invoice_status(self, checking_id: str) -> PaymentStatus:
-        """Check invoice status across sub-backends.
-
-        Tries ZBD first.  If ZBD returns UNKNOWN, falls back to Stripe.
-        """
-        status = await self._zbd.get_invoice_status(checking_id)
-        if status.result != PaymentResult.UNKNOWN:
-            return status
-        return await self._stripe.get_invoice_status(checking_id)
+        """Check invoice status via the default (ZBD) backend."""
+        return await self._zbd.get_invoice_status(checking_id)
 
     async def pay_invoice(
         self, quote: MeltQuote, fee_limit_msat: int

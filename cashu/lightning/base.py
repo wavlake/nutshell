@@ -119,15 +119,6 @@ class LightningBackend(ABC):
         if unit not in self.supported_units:
             raise Unsupported(f"Unit {unit} is not supported")
 
-    def get_backend(self, name: Optional[str] = None) -> "LightningBackend":
-        """Return a sub-backend by name. Non-composite backends return self."""
-        return self
-
-    @property
-    def default_backend_name(self) -> Optional[str]:
-        """Name of the default sub-backend, or None for non-composite."""
-        return None
-
     @abstractmethod
     def __init__(self, unit: Unit, **kwargs):
         pass

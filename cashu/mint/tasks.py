@@ -5,7 +5,6 @@ from typing import List
 from loguru import logger
 
 from ..core.base import MintQuoteState
-from ..core.errors import CashuError
 from ..core.settings import settings
 from ..lightning.base import LightningBackend
 from .protocols import SupportsBackends, SupportsDb, SupportsEvents
@@ -43,31 +42,18 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
 
     async def invoice_callback_dispatcher(self, checking_id: str) -> None:
         logger.debug(f"Invoice callback dispatcher: {checking_id}")
-        # First, resolve the quote outside the row lock so we can lock the
-        # correct row.  The caller may have sent the payment request (bolt11)
-        # instead of the internal checking_id (e.g. ZBD charge UUID).
-        quote = await self.crud.get_mint_quote(
-            checking_id=checking_id, db=self.db
-        )
-        if not quote:
-            quote = await self.crud.get_mint_quote(
-                request=checking_id, db=self.db
-            )
-        if not quote:
-            raise CashuError(f"Quote not found for checking_id={checking_id}")
-
         async with self.db.get_connection(
             lock_table="mint_quotes",
-            lock_select_statement="quote = :quote",
-            lock_parameters={"quote": quote.quote},
+            lock_select_statement="checking_id = :checking_id",
+            lock_parameters={"checking_id": checking_id},
             lock_timeout=5,
         ) as conn:
-            # Re-fetch under lock to get current state
             quote = await self.crud.get_mint_quote(
-                quote_id=quote.quote, db=self.db, conn=conn
+                checking_id=checking_id, db=self.db, conn=conn
             )
             if not quote:
-                raise CashuError(f"Quote not found for checking_id={checking_id}")
+                logger.error(f"Quote not found for {checking_id}")
+                return
 
             logger.trace(
                 f"Invoice callback dispatcher: quote {quote} trying to set as {MintQuoteState.paid}"

@@ -220,8 +220,6 @@ message Nut04Quote {
     optional int64 expiry = 10;
     // Optional: The public key associated with the quote, if applicable.
     optional string pubkey = 13;
-    // Optional: The sub-backend name for composite wallets (e.g. "zbd", "stripe").
-    optional string backend = 14;
 }
 
 // BlindedMessage represents a blinded message used in Cashu.
