@@ -417,29 +417,84 @@ class TestDispatcherLookup:
         """Integration: the callback HTTP endpoint surfaces the dispatcher
         failure as 500 instead of the previous silent 200.
 
-        Patches cashu.mint.callbacks.ledger to the real ledger fixture, and
-        sets the secret so authorization passes.
+        Uses httpx.AsyncClient with ASGITransport so the request runs on the
+        same event loop as the ledger fixture (the sync TestClient would spin
+        up a worker thread and break the fixture's asyncio sqlite connection).
         """
+        import httpx
         from fastapi import FastAPI
 
         from cashu.mint.callbacks import callback_router
 
         app = FastAPI()
         app.include_router(callback_router)
-        client = TestClient(app)
 
         with patch("cashu.mint.callbacks.ledger", ledger_with_composite), patch(
             "cashu.mint.callbacks.settings"
         ) as mock_settings:
             mock_settings.mint_stripe_callback_secret = "test-secret"
             mock_settings.mint_zbd_callback_secret = "test-secret"
-            resp = client.post(
-                "/v1/callbacks/stripe-payment",
-                json={"checking_id": "does-not-exist"},
-                headers={"Authorization": "Bearer test-secret"},
-            )
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://testserver"
+            ) as client:
+                resp = await client.post(
+                    "/v1/callbacks/stripe-payment",
+                    json={"checking_id": "does-not-exist"},
+                    headers={"Authorization": "Bearer test-secret"},
+                )
             assert resp.status_code == 500
             assert resp.json() == {"detail": "Internal error"}
+
+    @pytest.mark.asyncio
+    async def test_checking_id_lookup_takes_priority_over_request(
+        self, ledger_with_composite: Ledger
+    ):
+        """If the same string is a valid checking_id for quote A AND the
+        request for quote B, the primary (checking_id) lookup must win —
+        the fallback should only run on a miss. Pins the resolution order
+        so a future refactor can't silently flip priorities.
+        """
+        import time
+
+        from cashu.core.base import MintQuote
+
+        target = await ledger_with_composite.mint_quote(
+            PostMintQuoteRequest(unit="usd", amount=1100),
+            backend="stripe",
+        )
+
+        # Hand-insert a decoy quote whose `request` collides with target's
+        # checking_id. Using the crud directly avoids a second real mint_quote
+        # call (which would generate its own Stripe uuid).
+        decoy = MintQuote(
+            quote="decoy-quote-id",
+            method="bolt11",
+            request=target.checking_id,
+            checking_id="decoy-checking-id",
+            unit="usd",
+            amount=1100,
+            state=MintQuoteState.unpaid,
+            created_time=int(time.time()),
+        )
+        await ledger_with_composite.crud.store_mint_quote(
+            quote=decoy, db=ledger_with_composite.db
+        )
+
+        await ledger_with_composite.invoice_callback_dispatcher(
+            target.checking_id
+        )
+
+        refreshed_target = await ledger_with_composite.crud.get_mint_quote(
+            quote_id=target.quote, db=ledger_with_composite.db
+        )
+        refreshed_decoy = await ledger_with_composite.crud.get_mint_quote(
+            quote_id="decoy-quote-id", db=ledger_with_composite.db
+        )
+        assert refreshed_target is not None
+        assert refreshed_decoy is not None
+        assert refreshed_target.state == MintQuoteState.paid
+        assert refreshed_decoy.state == MintQuoteState.unpaid
 
 
 @pytest.mark.asyncio

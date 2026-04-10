@@ -48,8 +48,13 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
         # backend-specific checking_id (ZBD charge id, Stripe uuid, …) or
         # the stored payment_request (bolt11, "stripe:<uuid>"). We accept
         # both so a misconfigured caller cannot silently drop a payment.
-        # TODO(wavlake): Go API should send the backend-specific checking_id
-        # directly — the request fallback exists as a safety net.
+        # TODO: Go API should send the backend-specific checking_id directly —
+        # the request fallback exists as a safety net.
+        #
+        # Note: `request` is stored lowercased by ledger.mint_quote(), so the
+        # fallback lowercases to match. `checking_id` is stored as-is by the
+        # backend; today all production backends (ZBD, Stripe) emit lowercase
+        # identifiers so the as-is primary lookup is sufficient.
         quote = await self.crud.get_mint_quote(
             checking_id=checking_id, db=self.db
         )
@@ -58,7 +63,6 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
                 request=checking_id.lower(), db=self.db
             )
         if not quote:
-            logger.error(f"Quote not found for {checking_id}")
             raise CashuError(f"Quote not found for checking_id={checking_id}")
 
         # Re-fetch under a row-level lock to serialize state transitions
@@ -73,11 +77,9 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
                 quote_id=quote.quote, db=self.db, conn=conn
             )
             if not quote:
-                logger.error(
-                    f"Quote disappeared between resolve and lock: {checking_id}"
-                )
                 raise CashuError(
-                    f"Quote not found for checking_id={checking_id}"
+                    f"Quote disappeared between resolve and lock for"
+                    f" checking_id={checking_id}"
                 )
 
             logger.trace(
