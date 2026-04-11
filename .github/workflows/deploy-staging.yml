@@ -1,6 +1,13 @@
 # Deploy Nutshell Cashu Mint to Cloud Run (Staging)
 #
-# Triggers on push to main branch.
+# Manual-dispatch only. The canonical deploy path is the monorepo Cloud Build
+# trigger on wavlake/monorepo, which deploys from .cloudbuild/nutshell-staging.yaml
+# whenever the services/nutshell submodule pointer is bumped on main.
+#
+# This workflow is retained as an escape hatch for ad-hoc fork-side deploys
+# via the GitHub Actions "Run workflow" button. Do NOT re-enable on push —
+# doing so will cause env drift and silently overwrite the monorepo deploy.
+#
 # Uses Workload Identity Federation for keyless GCP authentication.
 #
 # Prerequisites:
@@ -20,8 +27,6 @@
 name: Deploy to Cloud Run (Staging)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 env:
