@@ -17,6 +17,7 @@ from .auth.router import auth_router
 from .callbacks import callback_router
 from .router import redis, router
 from .router_deprecated import router_deprecated
+from .sentry import init_sentry  # fork-only: Sentry error reporting
 from .startup import (
     shutdown_management_rpc,
     shutdown_mint,
@@ -58,6 +59,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(config_object="core.settings") -> FastAPI:
+    init_sentry()  # fork-only; no-op unless SENTRY_DSN is set
     configure_logger()
 
     app = FastAPI(
