@@ -97,9 +97,11 @@ This is a fork of [cashu/nutshell](https://github.com/cashubtc/nutshell). Minimi
 | `cashu/mint/migrations.py` | Added `m033_add_backend_to_mint_quotes` | If upstream adds m033, renumber ours. Migration is idempotent (catches duplicate column errors) |
 | `cashu/mint/management_rpc/management_rpc.py` | `del mint_quote_dict['backend']` in `GetNut04Quote` | If upstream regenerates the proto with a `backend` field, remove this `del` |
 | `cashu/lightning/__init__.py` | Added `ZBDStripeWallet` import | Append-only, low conflict risk |
+| `cashu/mint/app.py` | Import `init_sentry` and call it as the first line of `create_app()` | Two lines; if upstream refactors `create_app`, re-add the import and the `init_sentry()` call before `configure_logger()` |
+| `Dockerfile.cloudrun` | `RUN pip install "sentry-sdk==2.20.0"` after `poetry install` (Wavlake-only Cloud Run image) | Sentry is installed here, NOT in `pyproject.toml`/`poetry.lock`, to keep the lock untouched and avoid upstream conflicts. `Dockerfile.cloudrun` is itself fork-only |
 | `tests/mint/test_mint_app_router.py` | Added `backend=None` to mock `mint_quote` signature | Keep in sync with `ledger.mint_quote()` signature |
 
-Fork-only file (no conflict risk): `cashu/lightning/zbd_stripe.py`
+Fork-only files (no conflict risk): `cashu/lightning/zbd_stripe.py`, `cashu/mint/sentry.py` (Sentry error reporting — guarded import, no-op unless `SENTRY_DSN` is set), `tests/mint/test_sentry.py`, `Dockerfile.cloudrun`
 
 ## NUT Protocol
 

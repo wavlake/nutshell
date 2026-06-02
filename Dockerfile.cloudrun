@@ -31,6 +31,13 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-dev --no-root --no-interaction
 
+# Sentry error reporting (Wavlake fork-only). Installed here rather than via
+# pyproject.toml/poetry.lock to keep the auto-generated lock untouched and
+# minimize upstream-merge conflict surface. cashu/mint/sentry.py guards the
+# import, so the mint runs fine without this (e.g. upstream, local, tests);
+# it activates only when SENTRY_DSN is set. See cashu/mint/sentry.py.
+RUN pip install --no-cache-dir "sentry-sdk==2.20.0"
+
 # Copy source code
 COPY . .
 
