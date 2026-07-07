@@ -32,7 +32,17 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
                     # Reset retry delay on successful connection to backend stream
                     retry_delay = settings.mint_retry_exponential_backoff_base_delay
                     async for checking_id in backend.paid_invoices_stream():
-                        await self.invoice_callback_dispatcher(checking_id)
+                        try:
+                            await self.invoice_callback_dispatcher(checking_id)
+                        except CashuError as e:
+                            # A payment we can't match to a quote must be loud
+                            # (error log -> Sentry) but must not tear down the
+                            # stream subscription: restarting would delay every
+                            # payment queued behind it.
+                            logger.error(
+                                f"Invoice callback dispatcher failed for"
+                                f" {checking_id}: {e}"
+                            )
                 except Exception as e:
                     logger.error(f"Error in invoice listener: {e}")
                     logger.info(f"Restarting invoice listener in {retry_delay} seconds...")
@@ -88,6 +98,7 @@ class LedgerTasks(SupportsDb, SupportsBackends, SupportsEvents):
             if quote.unpaid:
                 quote.state = MintQuoteState.paid
                 quote.paid_time = int(time.time())
+                quote.updated_at = int(time.time())
                 await self.crud.update_mint_quote(quote=quote, db=self.db, conn=conn)
                 logger.trace(
                     f"Quote {quote.quote} with {MintQuoteState.unpaid} set as {quote.state.value}"
