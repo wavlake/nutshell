@@ -14,7 +14,7 @@ from ..core.settings import settings
 async def m000_create_migrations_table(conn: Connection):
     await conn.execute(
         f"""
-    CREATE TABLE IF NOT EXISTS {conn.table_with_schema('dbversions')} (
+    CREATE TABLE IF NOT EXISTS {conn.table_with_schema("dbversions")} (
         db TEXT PRIMARY KEY,
         version INT NOT NULL
     )
@@ -26,7 +26,7 @@ async def m001_initial(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('promises')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("promises")} (
                     amount {db.big_int} NOT NULL,
                     b_ TEXT NOT NULL,
                     c_ TEXT NOT NULL,
@@ -39,7 +39,7 @@ async def m001_initial(db: Database):
 
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_used')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_used")} (
                     amount {db.big_int} NOT NULL,
                     c TEXT NOT NULL,
                     secret TEXT NOT NULL,
@@ -52,7 +52,7 @@ async def m001_initial(db: Database):
 
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('invoices')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("invoices")} (
                     amount {db.big_int} NOT NULL,
                     bolt11 TEXT NOT NULL,
                     id TEXT NOT NULL,
@@ -76,10 +76,10 @@ async def drop_balance_views(db: Database, conn: Connection):
 async def create_balance_views(db: Database, conn: Connection):
     await conn.execute(
         f"""
-        CREATE VIEW {db.table_with_schema('balance_issued')} AS
+        CREATE VIEW {db.table_with_schema("balance_issued")} AS
         SELECT id AS keyset, COALESCE(s, 0) AS balance FROM (
             SELECT id, SUM(amount) AS s
-            FROM {db.table_with_schema('promises')}
+            FROM {db.table_with_schema("promises")}
             WHERE amount > 0 AND c_ IS NOT NULL
             GROUP BY id
         ) AS balance_issued;
@@ -87,10 +87,10 @@ async def create_balance_views(db: Database, conn: Connection):
     )
     await conn.execute(
         f"""
-        CREATE VIEW {db.table_with_schema('balance_redeemed')} AS
+        CREATE VIEW {db.table_with_schema("balance_redeemed")} AS
         SELECT id AS keyset, COALESCE(s, 0) AS balance FROM (
             SELECT id, SUM(amount) AS s
-            FROM {db.table_with_schema('proofs_used')}
+            FROM {db.table_with_schema("proofs_used")}
             WHERE amount > 0
             GROUP BY id
         ) AS balance_redeemed;
@@ -98,13 +98,13 @@ async def create_balance_views(db: Database, conn: Connection):
     )
     await conn.execute(
         f"""
-        CREATE VIEW {db.table_with_schema('balance')} AS
+        CREATE VIEW {db.table_with_schema("balance")} AS
         SELECT keyset, s_issued - s_used AS balance FROM (
             SELECT bi.keyset AS keyset,
                 bi.balance AS s_issued,
                 COALESCE(bu.balance, 0) AS s_used
-            FROM {db.table_with_schema('balance_issued')} bi
-            LEFT OUTER JOIN {db.table_with_schema('balance_redeemed')} bu
+            FROM {db.table_with_schema("balance_issued")} bi
+            LEFT OUTER JOIN {db.table_with_schema("balance_redeemed")} bu
             ON bi.keyset = bu.keyset
         ) AS balance;
         """
@@ -125,7 +125,7 @@ async def m003_mint_keysets(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('keysets')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("keysets")} (
                     id TEXT NOT NULL,
                     derivation_path TEXT,
                     valid_from TIMESTAMP NOT NULL DEFAULT {db.timestamp_now},
@@ -140,7 +140,7 @@ async def m003_mint_keysets(db: Database):
         )
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('mint_pubkeys')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("mint_pubkeys")} (
                     id TEXT NOT NULL,
                     amount {db.big_int} NOT NULL,
                     pubkey TEXT NOT NULL,
@@ -169,7 +169,7 @@ async def m005_pending_proofs_table(db: Database) -> None:
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_pending')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_pending")} (
                     amount {db.big_int} NOT NULL,
                     c TEXT NOT NULL,
                     secret TEXT NOT NULL,
@@ -263,8 +263,7 @@ async def m011_add_quote_tables(db: Database):
 
         # add column "witness" to table proofs_used
         await conn.execute(
-            f"ALTER TABLE {db.table_with_schema('proofs_used')} ADD COLUMN witness"
-            " TEXT"
+            f"ALTER TABLE {db.table_with_schema('proofs_used')} ADD COLUMN witness TEXT"
         )
 
         # add columns "seed" and "unit" to table keysets
@@ -283,7 +282,7 @@ async def m011_add_quote_tables(db: Database):
 
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('mint_quotes')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("mint_quotes")} (
                     quote TEXT NOT NULL,
                     method TEXT NOT NULL,
                     request TEXT NOT NULL,
@@ -303,7 +302,7 @@ async def m011_add_quote_tables(db: Database):
 
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('melt_quotes')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("melt_quotes")} (
                     quote TEXT NOT NULL,
                     method TEXT NOT NULL,
                     request TEXT NOT NULL,
@@ -350,7 +349,7 @@ async def m012_keysets_uniqueness_with_seed(db: Database):
         await conn.execute(f"DROP TABLE {db.table_with_schema('keysets')}")
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('keysets')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("keysets")} (
                     id TEXT NOT NULL,
                     derivation_path TEXT,
                     seed TEXT,
@@ -392,7 +391,7 @@ async def m013_keysets_add_encrypted_seed(db: Database):
         await conn.execute(f"DROP TABLE {db.table_with_schema('keysets')}")
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('keysets')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("keysets")} (
                     id TEXT NOT NULL,
                     derivation_path TEXT,
                     seed TEXT,
@@ -466,7 +465,7 @@ async def m014_proofs_add_Y_column(db: Database):
         await conn.execute(f"DROP TABLE {db.table_with_schema('proofs_used')}")
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_used')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_used")} (
                     amount {db.big_int} NOT NULL,
                     c TEXT NOT NULL,
                     secret TEXT NOT NULL,
@@ -512,7 +511,7 @@ async def m014_proofs_add_Y_column(db: Database):
         await conn.execute(f"DROP TABLE {db.table_with_schema('proofs_pending')}")
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_pending')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_pending")} (
                     amount {db.big_int} NOT NULL,
                     c TEXT NOT NULL,
                     secret TEXT NOT NULL,
@@ -586,10 +585,10 @@ async def m016_recompute_Y_with_new_h2c(db: Database):
             )
             await conn.execute(
                 f"""
-                UPDATE {db.table_with_schema('proofs_used')}
+                UPDATE {db.table_with_schema("proofs_used")}
                 SET y = tmp_proofs_used.y
                 FROM tmp_proofs_used
-                WHERE {db.table_with_schema('proofs_used')}.secret = tmp_proofs_used.secret
+                WHERE {db.table_with_schema("proofs_used")}.secret = tmp_proofs_used.secret
                 """
             )
 
@@ -606,10 +605,10 @@ async def m016_recompute_Y_with_new_h2c(db: Database):
             )
             await conn.execute(
                 f"""
-                UPDATE {db.table_with_schema('proofs_pending')}
+                UPDATE {db.table_with_schema("proofs_pending")}
                 SET y = tmp_proofs_pending.y
                 FROM tmp_proofs_pending
-                WHERE {db.table_with_schema('proofs_pending')}.secret = tmp_proofs_pending.secret
+                WHERE {db.table_with_schema("proofs_pending")}.secret = tmp_proofs_pending.secret
                 """
             )
 
@@ -639,7 +638,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
         # add foreign key constraints to proofs_used table
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_used_new')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_used_new")} (
                     amount {db.big_int} NOT NULL,
                     id TEXT,
                     c TEXT NOT NULL,
@@ -649,7 +648,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
                     created TIMESTAMP,
                     melt_quote TEXT,
 
-                    FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema('melt_quotes')}(quote),
+                    FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema("melt_quotes")}(quote),
 
                     UNIQUE (y)
                 );
@@ -666,7 +665,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
         # add foreign key constraints to proofs_pending table
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('proofs_pending_new')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("proofs_pending_new")} (
                     amount {db.big_int} NOT NULL,
                     id TEXT,
                     c TEXT NOT NULL,
@@ -676,7 +675,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
                     created TIMESTAMP,
                     melt_quote TEXT,
 
-                    FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema('melt_quotes')}(quote),
+                    FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema("melt_quotes")}(quote),
 
                     UNIQUE (y)
                 );
@@ -693,7 +692,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
         # add foreign key constraints to promises table
         await conn.execute(
             f"""
-                    CREATE TABLE IF NOT EXISTS {db.table_with_schema('promises_new')} (
+                    CREATE TABLE IF NOT EXISTS {db.table_with_schema("promises_new")} (
                         amount {db.big_int} NOT NULL,
                         id TEXT,
                         b_ TEXT NOT NULL,
@@ -704,7 +703,7 @@ async def m017_foreign_keys_proof_tables(db: Database):
                         mint_quote TEXT,
                         swap_id TEXT,
 
-                        FOREIGN KEY (mint_quote) REFERENCES {db.table_with_schema('mint_quotes')}(quote),
+                        FOREIGN KEY (mint_quote) REFERENCES {db.table_with_schema("mint_quotes")}(quote),
 
                         UNIQUE (b_)
                     );
@@ -730,7 +729,7 @@ async def m018_duplicate_deprecated_keyset_ids(db: Database):
     async with db.connect() as conn:
         rows = await conn.fetchall(  # type: ignore
             f"""
-                SELECT * from {db.table_with_schema('keysets')}
+                SELECT * from {db.table_with_schema("keysets")}
                 """,
         )
         keysets = [MintKeyset(**row) for row in rows]
@@ -748,7 +747,7 @@ async def m018_duplicate_deprecated_keyset_ids(db: Database):
         for keyset in duplicated_keysets:
             await conn.execute(
                 f"""
-                INSERT INTO {db.table_with_schema('keysets')}
+                INSERT INTO {db.table_with_schema("keysets")}
                 (id, derivation_path, valid_from, valid_to, first_seen, active, version, seed, unit, encrypted_seed, seed_encryption_method)
                 VALUES (:id, :derivation_path, :valid_from, :valid_to, :first_seen, :active, :version, :seed, :unit, :encrypted_seed, :seed_encryption_method)
                 """,
@@ -846,7 +845,7 @@ async def m023_add_key_to_mint_quote_table(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                ALTER TABLE {db.table_with_schema('mint_quotes')}
+                ALTER TABLE {db.table_with_schema("mint_quotes")}
                 ADD COLUMN pubkey TEXT DEFAULT NULL
             """
         )
@@ -856,7 +855,7 @@ async def m024_add_melt_quote_outputs(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                ALTER TABLE {db.table_with_schema('melt_quotes')}
+                ALTER TABLE {db.table_with_schema("melt_quotes")}
                 ADD COLUMN outputs TEXT DEFAULT NULL
             """
         )
@@ -927,24 +926,24 @@ async def m027_add_balance_to_keysets_and_log_table(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                ALTER TABLE {db.table_with_schema('keysets')}
+                ALTER TABLE {db.table_with_schema("keysets")}
                 ADD COLUMN balance INTEGER NOT NULL DEFAULT 0
             """
         )
         await conn.execute(
             f"""
-                ALTER TABLE {db.table_with_schema('keysets')}
+                ALTER TABLE {db.table_with_schema("keysets")}
                 ADD COLUMN fees_paid INTEGER NOT NULL DEFAULT 0
             """
         )
         # copy the balances from the balance view for each keyset
         await conn.execute(
             f"""
-                UPDATE {db.table_with_schema('keysets')}
+                UPDATE {db.table_with_schema("keysets")}
                 SET balance = COALESCE(
                     (
                         SELECT b.balance
-                        FROM {db.table_with_schema('balance')} AS b
+                        FROM {db.table_with_schema("balance")} AS b
                         WHERE b.keyset = keysets.id
                     ),
                     0
@@ -953,7 +952,7 @@ async def m027_add_balance_to_keysets_and_log_table(db: Database):
         )
         await conn.execute(
             f"""
-                CREATE TABLE IF NOT EXISTS {db.table_with_schema('balance_log')} (
+                CREATE TABLE IF NOT EXISTS {db.table_with_schema("balance_log")} (
                     unit TEXT NOT NULL,
                     keyset_balance INTEGER NOT NULL,
                     keyset_fees_paid INTEGER NOT NULL,
@@ -977,7 +976,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
     ):
         rows = await conn.fetchall(
             f"""
-                SELECT quote, outputs FROM {db.table_with_schema('melt_quotes')}
+                SELECT quote, outputs FROM {db.table_with_schema("melt_quotes")}
                 WHERE state = :state AND outputs IS NOT NULL
             """,
             {"state": MeltQuoteState.pending.value},
@@ -997,7 +996,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
                 # check if promise with b_ already exists
                 existing_promise = await conn.fetchone(
                     f"""
-                        SELECT * FROM {db.table_with_schema('promises')}
+                        SELECT * FROM {db.table_with_schema("promises")}
                         WHERE b_ = :b_
                     """,
                     {
@@ -1007,7 +1006,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
                 if not existing_promise:
                     await conn.execute(
                         f"""
-                            INSERT INTO {db.table_with_schema('promises')}
+                            INSERT INTO {db.table_with_schema("promises")}
                             (amount, id, b_, created, mint_quote, melt_quote, swap_id)
                             VALUES (:amount, :id, :b_, :created, :mint_quote, :melt_quote, :swap_id)
                         """,
@@ -1029,7 +1028,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
             await conn.execute("PRAGMA foreign_keys=OFF;")
             await conn.execute(
                 f"""
-                    CREATE TABLE IF NOT EXISTS {db.table_with_schema('melt_quotes_new')} (
+                    CREATE TABLE IF NOT EXISTS {db.table_with_schema("melt_quotes_new")} (
                         quote TEXT NOT NULL,
                         method TEXT NOT NULL,
                         request TEXT NOT NULL,
@@ -1051,11 +1050,11 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
             )
             await conn.execute(
                 f"""
-                    INSERT INTO {db.table_with_schema('melt_quotes_new')} (
+                    INSERT INTO {db.table_with_schema("melt_quotes_new")} (
                         quote, method, request, checking_id, unit, amount, fee_reserve, paid, created_time, paid_time, fee_paid, proof, state, expiry
                     )
                     SELECT quote, method, request, checking_id, unit, amount, fee_reserve, paid, created_time, paid_time, fee_paid, proof, state, expiry
-                    FROM {db.table_with_schema('melt_quotes')};
+                    FROM {db.table_with_schema("melt_quotes")};
                 """
             )
             await conn.execute(f"DROP TABLE {db.table_with_schema('melt_quotes')}")
@@ -1078,7 +1077,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
             await conn.execute("PRAGMA foreign_keys=OFF;")
             await conn.execute(
                 f"""
-                        CREATE TABLE IF NOT EXISTS {db.table_with_schema('promises_new')} (
+                        CREATE TABLE IF NOT EXISTS {db.table_with_schema("promises_new")} (
                             amount {db.big_int} NOT NULL,
                             id TEXT,
                             b_ TEXT NOT NULL,
@@ -1091,8 +1090,8 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
                             melt_quote TEXT,
                             swap_id TEXT,
 
-                            FOREIGN KEY (mint_quote) REFERENCES {db.table_with_schema('mint_quotes')}(quote),
-                            FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema('melt_quotes')}(quote),
+                            FOREIGN KEY (mint_quote) REFERENCES {db.table_with_schema("mint_quotes")}(quote),
+                            FOREIGN KEY (melt_quote) REFERENCES {db.table_with_schema("melt_quotes")}(quote),
 
                             UNIQUE (b_)
                         );
@@ -1141,6 +1140,7 @@ async def m028_promises_c_allow_null_add_melt_quote(db: Database):
         # recreate the balance views
         await create_balance_views(db, conn)
 
+
 async def m029_remove_overlong_witness_values(db: Database):
     """
     Delete any witness values longer than 1024 characters in proofs tables.
@@ -1173,10 +1173,11 @@ async def m031_add_final_expiry_to_keysets(db: Database):
     async with db.connect() as conn:
         await conn.execute(
             f"""
-                ALTER TABLE {db.table_with_schema('keysets')}
+                ALTER TABLE {db.table_with_schema("keysets")}
                 ADD COLUMN final_expiry INTEGER NULL
             """
         )
+
 
 async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
     """
@@ -1190,7 +1191,7 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
             # Recreate mint_quotes without 'paid' and 'issued'
             await conn.execute(
                 f"""
-                CREATE TABLE {db.table_with_schema('mint_quotes_new')} (
+                CREATE TABLE {db.table_with_schema("mint_quotes_new")} (
                     quote TEXT NOT NULL,
                     method TEXT NOT NULL,
                     request TEXT NOT NULL,
@@ -1210,15 +1211,17 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
             # Copy data (exclude 'paid' and 'issued')
             await conn.execute(
                 f"""
-                INSERT INTO {db.table_with_schema('mint_quotes_new')} (quote, method, request, checking_id, unit, amount, created_time, paid_time, state, pubkey)
+                INSERT INTO {db.table_with_schema("mint_quotes_new")} (quote, method, request, checking_id, unit, amount, created_time, paid_time, state, pubkey)
                 SELECT quote, method, request, checking_id, unit, amount, created_time, paid_time, state, pubkey
-                FROM {db.table_with_schema('mint_quotes')};
+                FROM {db.table_with_schema("mint_quotes")};
             """
             )
 
             # Swap tables
             await conn.execute(f"DROP TABLE {db.table_with_schema('mint_quotes')};")
-            await conn.execute(f"ALTER TABLE {db.table_with_schema('mint_quotes_new')} RENAME TO {db.table_with_schema('mint_quotes')};")
+            await conn.execute(
+                f"ALTER TABLE {db.table_with_schema('mint_quotes_new')} RENAME TO {db.table_with_schema('mint_quotes')};"
+            )
 
             await conn.execute("PRAGMA foreign_keys=ON;")
 
@@ -1228,8 +1231,127 @@ async def m032_remove_paid_and_issued_from_mint_quote(db: Database):
             await conn.execute("ALTER TABLE mint_quotes DROP COLUMN IF EXISTS issued;")
 
 
-async def m033_add_backend_to_mint_quotes(db: Database):
-    """Add backend column to mint_quotes for composite wallet support."""
+async def m033_add_issued_time_to_mint_quote(db: Database):
+    """
+    Add issued_time to mint_quotes table.
+    """
+    async with db.connect() as conn:
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('mint_quotes')} ADD COLUMN issued_time TIMESTAMP"
+        )
+
+
+async def m034_promises_order_index(db: Database):
+    """
+    Add order_index to promises table to preserve the original order of outputs.
+    """
+    async with db.connect() as conn:
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('promises')} ADD COLUMN order_index INTEGER DEFAULT 0"
+        )
+
+
+async def m035_add_last_checked_to_mint_quotes(db: Database):
+    """
+    Add last_checked column to mint_quotes table for rate limiting backend checks.
+    """
+    async with db.connect() as conn:
+        await conn.execute(
+            f"""
+                ALTER TABLE {db.table_with_schema("mint_quotes")}
+                ADD COLUMN last_checked TIMESTAMP NULL
+            """
+        )
+
+
+async def m036_add_mint_quote_accounting_fields(db: Database):
+    """
+    Add accounting and status fields to the mint_quotes table.
+    """
+    async with db.connect() as conn:
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('mint_quotes')} ADD COLUMN amount_paid {db.big_int} DEFAULT NULL"
+        )
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('mint_quotes')} ADD COLUMN amount_issued {db.big_int} DEFAULT NULL"
+        )
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('mint_quotes')} ADD COLUMN updated_at TIMESTAMP DEFAULT NULL"
+        )
+
+
+async def m037_remove_paid_from_melt_quote(db: Database):
+    """
+    Remove the deprecated paid field from melt_quotes.
+
+    The state column now fully represents payment status.
+    """
+    async with db.connect() as conn:
+        if conn.type == "SQLITE":
+            await conn.execute("PRAGMA foreign_keys=OFF;")
+            await conn.execute(
+                f"""
+                    CREATE TABLE IF NOT EXISTS {db.table_with_schema("melt_quotes_new")} (
+                        quote TEXT NOT NULL,
+                        method TEXT NOT NULL,
+                        request TEXT NOT NULL,
+                        checking_id TEXT NOT NULL,
+                        unit TEXT NOT NULL,
+                        amount {db.big_int} NOT NULL,
+                        fee_reserve {db.big_int},
+                        created_time TIMESTAMP,
+                        paid_time TIMESTAMP,
+                        fee_paid {db.big_int},
+                        proof TEXT,
+                        state TEXT,
+                        expiry TIMESTAMP,
+
+                        UNIQUE (quote)
+                    );
+                """
+            )
+            await conn.execute(
+                f"""
+                    INSERT INTO {db.table_with_schema("melt_quotes_new")} (
+                        quote, method, request, checking_id, unit, amount, fee_reserve, created_time, paid_time, fee_paid, proof, state, expiry
+                    )
+                    SELECT quote, method, request, checking_id, unit, amount, fee_reserve, created_time, paid_time, fee_paid, proof, state, expiry
+                    FROM {db.table_with_schema("melt_quotes")};
+                """
+            )
+            await conn.execute(f"DROP TABLE {db.table_with_schema('melt_quotes')}")
+            await conn.execute(
+                f"ALTER TABLE {db.table_with_schema('melt_quotes_new')} RENAME TO {db.table_with_schema('melt_quotes')}"
+            )
+            await conn.execute("PRAGMA foreign_keys=ON;")
+        else:
+            await conn.execute(
+                f"ALTER TABLE {db.table_with_schema('melt_quotes')} DROP COLUMN IF EXISTS paid"
+            )
+
+
+async def m038_add_backend_to_mint_quotes(db: Database):
+    """Add backend column to mint_quotes for composite wallet support.
+
+    Wavlake fork migration, formerly numbered m033. Databases that ran it under
+    that number are stored at version >= 33 and therefore skip upstream's
+    m033_add_issued_time_to_mint_quote, so this migration also adds issued_time
+    for them. Both ALTERs are idempotent (duplicate-column errors are caught).
+    """
+    # Each ALTER runs in its own connection: a duplicate-column error aborts
+    # the enclosing Postgres transaction, which would poison a second statement
+    # on the same connection.
+    async with db.connect() as conn:
+        try:
+            await conn.execute(
+                f"""
+                    ALTER TABLE {db.table_with_schema('mint_quotes')}
+                    ADD COLUMN issued_time TIMESTAMP
+                """
+            )
+        except (OperationalError, ProgrammingError):
+            # Column already exists (upstream m033 ran on this database)
+            pass
     async with db.connect() as conn:
         try:
             await conn.execute(
@@ -1239,5 +1361,5 @@ async def m033_add_backend_to_mint_quotes(db: Database):
                 """
             )
         except (OperationalError, ProgrammingError):
-            # Column may already exist from a partial migration run
+            # Column already exists (this migration ran as m033 on this database)
             pass
