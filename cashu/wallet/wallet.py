@@ -731,6 +731,7 @@ class Wallet(
         amount: int,
         secret_lock: Optional[Secret] = None,
         include_fees: bool = False,
+        p2pk_e: Optional[str] = None,
     ) -> Tuple[List[Proof], List[Proof]]:
         """Calls the swap API to split the proofs into two sets of proofs, one for keeping and one for sending.
 
@@ -817,6 +818,12 @@ class Wallet(
 
         keep_proofs = new_proofs[: len(keep_outputs)]
         send_proofs = new_proofs[len(keep_outputs) :]
+
+        # P2BK: attach ephemeral pubkey to send proofs
+        if p2pk_e:
+            for p in send_proofs:
+                p.p2pk_e = p2pk_e
+
         return keep_proofs, send_proofs
 
     async def melt_quote(
@@ -1076,14 +1083,7 @@ class Wallet(
                 C_, r, self.keysets[promise.id].public_keys[promise.amount]
             )
 
-            if not settings.wallet_use_deprecated_h2c:
-                B_, r = b_dhke.step1_alice(secret, r)  # recompute B_ for dleq proofs
-            # BEGIN: BACKWARDS COMPATIBILITY < 0.15.1
-            else:
-                B_, r = b_dhke.step1_alice_deprecated(
-                    secret, r
-                )  # recompute B_ for dleq proofs
-            # END: BACKWARDS COMPATIBILITY < 0.15.1
+            B_, r = b_dhke.step1_alice(secret, r)  # recompute B_ for dleq proofs
 
             proof = Proof(
                 id=promise.id,
@@ -1147,12 +1147,7 @@ class Wallet(
         rs_ = [None] * len(amounts) if not rs else rs
         rs_return: List[PrivateKey] = []
         for secret, amount, r in zip(secrets, amounts, rs_):
-            if not settings.wallet_use_deprecated_h2c:
-                B_, r = b_dhke.step1_alice(secret, r or None)
-            # BEGIN: BACKWARDS COMPATIBILITY < 0.15.1
-            else:
-                B_, r = b_dhke.step1_alice_deprecated(secret, r or None)
-            # END: BACKWARDS COMPATIBILITY < 0.15.1
+            B_, r = b_dhke.step1_alice(secret, r or None)
 
             assert r
             rs_return.append(r)
@@ -1314,6 +1309,7 @@ class Wallet(
         secret_lock: Optional[Secret] = None,
         set_reserved: bool = False,
         include_fees: bool = False,
+        p2pk_e: Optional[str] = None,
     ) -> Tuple[List[Proof], List[Proof]]:
         """
         Swaps a set of proofs with the mint to get a set that sums up to a desired amount that can be sent. The remaining
@@ -1353,7 +1349,7 @@ class Wallet(
             f"Amount to send: {self.unit.str(amount)} (+ {self.unit.str(fees)} fees)"
         )
         keep_proofs, send_proofs = await self.split(
-            swap_proofs, amount, secret_lock, include_fees=include_fees
+            swap_proofs, amount, secret_lock, include_fees=include_fees, p2pk_e=p2pk_e
         )
         if set_reserved:
             await self.set_reserved_for_send(send_proofs, reserved=True)

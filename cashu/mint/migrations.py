@@ -1330,16 +1330,32 @@ async def m037_remove_paid_from_melt_quote(db: Database):
             )
 
 
-async def m038_add_backend_to_mint_quotes(db: Database):
+async def m038_remove_dleq_from_promises(db: Database):
+    """Remove deterministically generated DLEQ proofs from persisted promises."""
+    async with db.connect() as conn:
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('promises')} DROP COLUMN dleq_e"
+        )
+        await conn.execute(
+            f"ALTER TABLE {db.table_with_schema('promises')} DROP COLUMN dleq_s"
+        )
+
+
+async def m039_add_backend_to_mint_quotes(db: Database):
     """Add backend column to mint_quotes for composite wallet support.
 
-    Wavlake fork migration, formerly numbered m033. Databases that ran it under
-    that number are stored at version >= 33 and therefore skip upstream's
-    m033_add_issued_time_to_mint_quote, so this migration also adds issued_time
-    for them. Both ALTERs are idempotent (duplicate-column errors are caught).
+    Wavlake fork migration, formerly numbered m033 and then m038 (renumbered
+    each time upstream claimed the number). Databases that ran it under an
+    earlier number are stored at that version and therefore skip the upstream
+    migration sharing it, so this migration also applies those upstream
+    effects idempotently:
+      - issued_time (upstream m033) for databases that ran ours as m033
+      - the promises dleq_e/dleq_s drop (upstream m038) for databases that
+        ran ours as m038
+    Every statement is idempotent (duplicate/missing-column errors caught).
     """
-    # Each ALTER runs in its own connection: a duplicate-column error aborts
-    # the enclosing Postgres transaction, which would poison a second statement
+    # Each statement runs in its own connection: a failed ALTER aborts the
+    # enclosing Postgres transaction, which would poison a second statement
     # on the same connection.
     async with db.connect() as conn:
         try:
@@ -1361,5 +1377,22 @@ async def m038_add_backend_to_mint_quotes(db: Database):
                 """
             )
         except (OperationalError, ProgrammingError):
-            # Column already exists (this migration ran as m033 on this database)
+            # Column already exists (this migration ran as m033/m038 on
+            # this database)
+            pass
+    async with db.connect() as conn:
+        try:
+            await conn.execute(
+                f"ALTER TABLE {db.table_with_schema('promises')} DROP COLUMN dleq_e"
+            )
+        except (OperationalError, ProgrammingError):
+            # Column already dropped (upstream m038 ran on this database)
+            pass
+    async with db.connect() as conn:
+        try:
+            await conn.execute(
+                f"ALTER TABLE {db.table_with_schema('promises')} DROP COLUMN dleq_s"
+            )
+        except (OperationalError, ProgrammingError):
+            # Column already dropped (upstream m038 ran on this database)
             pass
